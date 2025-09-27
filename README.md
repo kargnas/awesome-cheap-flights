@@ -29,7 +29,7 @@ uvx awesome-cheap-flights \
 | --- | --- | --- |
 | macOS / Linux | `curl -Ls https://astral.sh/uv/install.sh \| sh` | Restart shell, `uv --version` to confirm. |
 | Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb \| iex"` | Openssl fix? Run in admin if needed. |
-| iOS / iPadOS | Install [iSH](https://ish.app/), then inside: `apk add curl` followed by the macOS/Linux command above. | Keep iSH in foreground while scraping. |
+| iOS / iPadOS | Install [iSH](https://ish.app/). Run `apk add curl`. Then run `curl -Ls https://astral.sh/uv/install.sh \| sh`. | Keep iSH in foreground while scraping. |
 | Android | Install [Termux](https://termux.dev/en/), run `pkg install curl`, then use the macOS/Linux command. | Grant storage if you want CSV on shared storage. |
 
 Prefer pip? Install once and use the console script:
