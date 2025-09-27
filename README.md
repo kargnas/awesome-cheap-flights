@@ -2,6 +2,12 @@
 
 [![release](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml)
 
+<p align="center">
+  <img src="assets/image.png" alt="Pivot table of nonstop ICN fares." />
+  <br />
+  <em>Perfect fares for perfectionists.</em>
+</p>
+
 Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a browser.
 
 ## Quick win (uvx)
@@ -297,4 +303,4 @@ currency: USD
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: 0c027f640e4fa26fce549ccac43e0fda572e77b5
+Last commit id: dc2ea4225f18dcbf76ad51f14cfff78214728251
