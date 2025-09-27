@@ -11,32 +11,54 @@
 Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a browser.
 
 ## Quick win (uvx)
-1. Grab uv if you do not already have it (see the install table below).
-2. Run:
+
+### macOS / Linux
 ```bash
+curl -Ls https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
 uvx awesome-cheap-flights \
-  --output output/sample.csv \
+  --output sample.csv \
   --departure ICN \
   --destination FUK \
   --itinerary 2026-01-01:2026-01-04
 ```
-3. Crack open the CSV in your spreadsheet app and sort by `total_price`.
 
-`uvx` pulls the published package from PyPI, so there is no clone or setup step.
-
-## No-uv onboarding
-| Platform | Install uv | Notes |
-| --- | --- | --- |
-| macOS / Linux | `curl -Ls https://astral.sh/uv/install.sh \| sh` | Restart shell, `uv --version` to confirm. |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb \| iex"` | Openssl fix? Run in admin if needed. |
-| iOS / iPadOS | Install [iSH](https://ish.app/). Run `apk add curl`. Then run `curl -Ls https://astral.sh/uv/install.sh \| sh`. | Keep iSH in foreground while scraping. |
-| Android | Install [Termux](https://termux.dev/en/), run `pkg install curl`, then use the macOS/Linux command. | Grant storage if you want CSV on shared storage. |
-
-Prefer pip? Install once and use the console script:
-```bash
-pip install awesome-cheap-flights
-awesome-cheap-flights --output output/sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+### Windows (PowerShell)
+```powershell
+powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"
+uvx awesome-cheap-flights `
+  --output sample.csv `
+  --departure ICN `
+  --destination FUK `
+  --itinerary 2026-01-01:2026-01-04
 ```
+
+### iOS (a-Shell / latest iSH)
+```sh
+curl -Ls https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+uvx awesome-cheap-flights \
+  --output sample.csv \
+  --departure ICN \
+  --destination FUK \
+  --itinerary 2026-01-01:2026-01-04
+```
+### Android (Termux)
+```sh
+pkg update
+pkg install curl python
+curl -Ls https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
+uvx awesome-cheap-flights \
+  --output sample.csv \
+  --departure ICN \
+  --destination FUK \
+  --itinerary 2026-01-01:2026-01-04
+```
+
+Open the CSV and sort by `total_price` in your spreadsheet app.
+
+`uvx` pulls the published package from PyPI, so you do not need to clone or configure anything else.
 
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
@@ -90,7 +112,7 @@ Push to `main` triggers the `release` workflow automatically with a patch bump, 
 2. 다음 명령을 실행한다:
 ```bash
 uvx awesome-cheap-flights \
-  --output output/sample.csv \
+  --output sample.csv \
   --departure ICN \
   --destination FUK \
   --itinerary 2026-01-01:2026-01-04
@@ -100,17 +122,18 @@ uvx awesome-cheap-flights \
 `uvx`는 PyPI에서 게시된 패키지를 바로 받아오므로 클론이나 추가 설정이 필요 없다.
 
 ### uv 없이 온보딩
-| 플랫폼 | uv 설치 | 비고 |
-| --- | --- | --- |
-| macOS / Linux | `curl -Ls https://astral.sh/uv/install.sh \| sh` | 셸을 재시작한 뒤 `uv --version`으로 설치를 확인한다. |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb \| iex"` | OpenSSL 오류가 나면 관리자 권한으로 다시 실행한다. |
-| iOS / iPadOS | [iSH](https://ish.app/) 설치 후 내부에서 `apk add curl` 실행, 이어서 위 macOS/Linux 명령 사용. | 크롤링 중에는 iSH를 전면에 둔다. |
-| Android | [Termux](https://termux.dev/en/) 설치 후 `pkg install curl`, 이어서 위 macOS/Linux 명령 사용. | 공유 저장소에 CSV를 쓰려면 저장소 권한을 부여한다. |
+1. macOS / Linux: `curl -Ls https://astral.sh/uv/install.sh | sh` 실행 후 새 셸에서 `uv --version`으로 설치를 확인한다.
+2. Windows (PowerShell): `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"`를 실행한다.
+3. iOS / iPadOS: [iSH](https://ish.app/)에서 `apk add curl python3` 후 `curl -Ls https://astral.sh/uv/install.sh | sh`를 실행한다.
+4. Android (Termux): `pkg update && pkg install curl python` 실행 뒤 macOS/Linux 명령을 그대로 사용한다.
+
+`uv`는 `~/.local/bin`에 설치된다. `uv`가 보이지 않으면 `source ~/.local/bin/env` 실행 후 `export PATH="$HOME/.local/bin:$PATH"`를 추가하라.
+
 
 pip이 더 익숙하면 한 번만 설치한 뒤 콘솔 스크립트를 사용한다:
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output output/sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
 ```
 
 ### 설정 심화
@@ -156,14 +179,13 @@ currency: USD
 
 ### 릴리스 자동화
 `main` 브랜치에 푸시하면서 `awesome_cheap_flights/*.py`, 루트의 `*.toml`, `uv.lock` 중 하나라도 수정되고 마지막 릴리스 태그와 커밋이 달라졌을 때만 `release` 워크플로가 자동으로 patch 버전을 올려서 빌드, `uvx --from twine twine upload`로 업로드, 태그/푸시, GitHub Release 생성까지 처리한다. 조건이 안 맞으면 릴리스는 스킵된다. `minor`나 `current`가 필요할 땐 workflow_dispatch를 수동 실행해라. 게시 권한이 있는 `PYPI_TOKEN` 시크릿을 제공해야 하며, current는 기존 버전 재사용이다.
-
 ## README (中文)
 ### 快速入门（uvx）
 1. 如果还没有安装 uv，请参考下方安装表进行安装。
 2. 运行以下命令：
 ```bash
 uvx awesome-cheap-flights \
-  --output output/sample.csv \
+  --output sample.csv \
   --departure ICN \
   --destination FUK \
   --itinerary 2026-01-01:2026-01-04
@@ -172,18 +194,18 @@ uvx awesome-cheap-flights \
 
 `uvx` 会直接从 PyPI 拉取已发布的包，无需克隆或额外配置。
 
-### 无 uv 上手
-| 平台 | 安装 uv | 备注 |
-| --- | --- | --- |
-| macOS / Linux | `curl -Ls https://astral.sh/uv/install.sh \| sh` | 重启 Shell 后通过 `uv --version` 确认安装。 |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb \| iex"` | 遇到 OpenSSL 报错时以管理员身份重试。 |
-| iOS / iPadOS | 安装 [iSH](https://ish.app/)，在内部执行 `apk add curl`，然后运行上面的 macOS/Linux 命令。 | 抓取期间保持 iSH 在前台。 |
-| Android | 安装 [Termux](https://termux.dev/en/)，执行 `pkg install curl`，然后运行上面的 macOS/Linux 命令。 | 需要写入共享存储的 CSV 时授予存储权限。 |
+### 无 uv 上手步骤
+1. macOS / Linux：`curl -Ls https://astral.sh/uv/install.sh | sh`，换新 Shell 后用 `uv --version` 确认。
+2. Windows (PowerShell)：`powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"`。
+3. iOS / iPadOS：安装 [iSH](https://ish.app/)，运行 `apk add curl python3` 后执行 `curl -Ls https://astral.sh/uv/install.sh | sh`。
+4. Android：安装 [Termux](https://termux.dev/en/)，执行 `pkg update && pkg install curl python`，再使用与 macOS/Linux 相同的命令。
+
+`uv` 会安装在 `~/.local/bin`。若终端提示找不到命令，运行 `source ~/.local/bin/env` 并加入 `export PATH="$HOME/.local/bin:$PATH"`。
 
 如果更习惯 pip，可先安装再调用控制台脚本：
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output output/sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
 ```
 
 ### 配置详解
@@ -235,28 +257,28 @@ currency: USD
 1. まだ uv を入れていない場合は下の表を参考にインストールする。
 2. 次のコマンドを実行する:
 ```bash
-uvx awesome-cheap-flights \\
-  --output output/sample.csv \\
-  --departure ICN \\
-  --destination FUK \\
+uvx awesome-cheap-flights \
+  --output sample.csv \
+  --departure ICN \
+  --destination FUK \
   --itinerary 2026-01-01:2026-01-04
 ```
 3. 表計算ソフトで CSV を開き、`total_price` でソートする。
 
 `uvx` は PyPI に公開済みのパッケージを直接取得するため、クローンや追加セットアップは不要。
 
-### uv なしでの導入
-| プラットフォーム | uv の入れ方 | メモ |
-| --- | --- | --- |
-| macOS / Linux | `curl -Ls https://astral.sh/uv/install.sh \| sh` | シェルを再起動し、`uv --version` で確認する。 |
-| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb \| iex"` | OpenSSL エラー時は管理者権限で再実行する。 |
-| iOS / iPadOS | [iSH](https://ish.app/) を入れ、内部で `apk add curl` 後に上記 macOS/Linux コマンドを実行。 | 取得中は iSH を前面に保つ。 |
-| Android | [Termux](https://termux.dev/en/) を入れ、`pkg install curl` 後に上記 macOS/Linux コマンドを実行。 | 共有ストレージへ CSV を保存するなら権限を付与する。 |
+### uv なしの導入手順
+1. macOS / Linux：`curl -Ls https://astral.sh/uv/install.sh | sh` を実行し、新しいシェルで `uv --version` を確認する。
+2. Windows (PowerShell)：`powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"` を実行する。
+3. iOS / iPadOS：[iSH](https://ish.app/) で `apk add curl python3` を実行し、続けて `curl -Ls https://astral.sh/uv/install.sh | sh` を実行する。
+4. Android：[Termux](https://termux.dev/en/) で `pkg update && pkg install curl python` を実行し、macOS/Linux と同じコマンドを使う。
+
+`uv` は `~/.local/bin` に配置される。見つからない場合は `source ~/.local/bin/env` を実行し、`export PATH="$HOME/.local/bin:$PATH"` を追加する。
 
 pip を使いたい場合は一度インストールしてからコンソールスクリプトを呼び出す:
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output output/sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
 ```
 
 ### 設定の詳細
@@ -303,4 +325,4 @@ currency: USD
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: dc2ea4225f18dcbf76ad51f14cfff78214728251
+Last commit id: 4f49241ff281f046d9bbfcdad6e9281a6974e30e
