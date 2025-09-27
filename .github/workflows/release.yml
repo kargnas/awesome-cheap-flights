@@ -46,10 +46,10 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Build distribution
-        run: uvx build
+        run: uvx --from build pyproject-build --wheel --sdist
 
       - name: Publish to PyPI
-        run: uvx twine upload dist/* --non-interactive --username __token__ --password "$PYPI_TOKEN"
+        run: uvx --from twine twine upload dist/* --non-interactive --username __token__ --password "$PYPI_TOKEN"
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
 

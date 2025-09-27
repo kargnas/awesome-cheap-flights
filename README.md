@@ -6,7 +6,11 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a brow
 1. Grab uv if you do not already have it (see the install table below).
 2. Run:
 ```bash
-uvx awesome-cheap-flights   --output output/sample.csv   --departure ICN   --destination FUK   --itinerary 2026-01-01:2026-01-04
+uvx awesome-cheap-flights \
+  --output output/sample.csv \
+  --departure ICN \
+  --destination FUK \
+  --itinerary 2026-01-01:2026-01-04
 ```
 3. Crack open the CSV in your spreadsheet app and sort by `total_price_label`.
 
@@ -61,6 +65,6 @@ CSV headers include `departure_date`, `return_date`, airline, stop details, per-
 - `awesome_cheap_flights/pipeline.py`: reusable pipeline encapsulating scraping, combination, and CSV export
 
 ## Release automation
-Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/major options), build wheels via `uvx build`, push them with `uvx twine upload`, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights.
+Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/major options), build wheels via `uvx --from build pyproject-build --wheel --sdist`, push them with `uvx --from twine twine upload`, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights.
 
 Last commit id: 3f9586824e15e3a7fc6f1787a6d98621b9a992f6

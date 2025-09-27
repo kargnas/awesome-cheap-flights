@@ -44,7 +44,7 @@
 
 ## Release / Publishing
 - `scripts/bump_version.py --level {patch|minor|major}` updates `pyproject.toml` and writes the new version to stdout (and optional file).
-- `.github/workflows/release.yml` bumps the chosen level, builds with `uvx build`, uploads via `uvx twine upload`, then tags/pushes/drafts the GitHub Release.
+- `.github/workflows/release.yml` bumps the chosen level, builds with `uvx --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
 Last commit id: 3f9586824e15e3a7fc6f1787a6d98621b9a992f6
