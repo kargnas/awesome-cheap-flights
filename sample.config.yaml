@@ -8,9 +8,9 @@ destinations:
 
 itineraries:
   - outbound:
-      start: 2025-10-06
-      end: 2025-10-06
-    inbound: 2025-10-09
+      start: 2026-01-01
+      end: 2026-01-01
+    inbound: 2026-01-04
 
 output_path: output/sample.csv
 request_delay: 0.5

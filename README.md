@@ -15,9 +15,9 @@ uv run python main.py \
   --output output/sample.csv \
   --departure ICN # Seoul Incheon \
   --destination FUK # Fukuoka \
-  --itinerary 2025-10-06:2025-10-09
+  --itinerary 2026-01-01:2026-01-04
 ```
-You can also pass YAML-style dictionaries on the CLI, e.g. `--itinerary "{'outbound': {'start': '2025-10-06', 'end': '2025-10-07'}, 'inbound': '2025-10-09'}"` to cover a date window.
+You can also pass YAML-style dictionaries on the CLI, e.g. `--itinerary "{'outbound': {'start': '2026-01-01', 'end': '2026-01-02'}, 'inbound': '2026-01-04'}"` to cover a date window.
 
 ## YAML configuration
 Point to a YAML file (for development we use `sample.config.yaml`). Supported keys:
@@ -27,13 +27,13 @@ departures:
 destinations:
   - FUK  # Fukuoka
 itineraries:
-  - outbound: 2025-10-03
-    inbound: 2025-10-05
+  - outbound: 2026-01-01
+    inbound: 2026-01-03
   - outbound:
-      start: 2025-10-06
-      end: 2025-10-07
+      start: 2026-01-02
+      end: 2026-01-03
       step: 1
-    inbound: 2025-10-09
+    inbound: 2026-01-05
 output_path: output/flights2.csv
 request_delay: 1.0
 max_retries: 2
