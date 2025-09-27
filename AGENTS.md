@@ -36,15 +36,18 @@
 - Follow existing concise, imperative commit style (e.g., “Switch to departures/arrivals config with pure IATA codes”).
 - Each PR should include: summary of changes, CLI command used for verification, any config updates, and links to related issues.
 - Keep CSV artifacts out of version control unless required for review; share sample outputs via temporary paths or gists.
-- ALWAYS update README.md and AGENTS.md after modifications of logics. (ALWAYS KEEP UP-TO-DATE of the LATEST commit id on the end of the document, and update the documents by looking at the commits after that commit id everytime when you update the document)
+- ALWAYS update README.md and AGENTS.md whenever you touch project logic. After your edits run `git rev-parse HEAD` and replace the final `Last commit id:` line in both files with that hash (exactly once per file).
+- If the hash changes while you keep editing, refresh the `Last commit id:` line again before you finish.
+- NEVER use `git add .`, add all the files manually by mentioning the file names.
 
 ## Configuration Tips
 - Store local secrets or large route lists in `config.yaml` (git-ignored). Use `sample.config.yaml` only for reproducible smoke tests.
 - Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.
+- Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 
 ## Release / Publishing
 - `scripts/bump_version.py --level {patch|minor|major}` updates `pyproject.toml` and writes the new version to stdout (and optional file).
-- `.github/workflows/release.yml` bumps the chosen level, builds with `uvx --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release.
+- `.github/workflows/release.yml` bumps the chosen level, builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 3f9586824e15e3a7fc6f1787a6d98621b9a992f6
+Last commit id: 93018d0ca7cda0b508f3e68d7dd45485f49963f6
