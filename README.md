@@ -56,11 +56,11 @@ Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy 
 CSV headers include `departure_date`, `return_date`, airline, stop details, per-leg fares, and a computed `total_price_label` when numeric values are present.
 
 ## Project layout
-- `main.py`: compatibility shim that forwards to the packaged CLI
 - `awesome_cheap_flights/cli.py`: CLI entry point used by the console script/uvx
+- `awesome_cheap_flights/__main__.py`: enables `python -m awesome_cheap_flights` invocations
 - `awesome_cheap_flights/pipeline.py`: reusable pipeline encapsulating scraping, combination, and CSV export
 
 ## Release automation
-Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/major options), publish to PyPI, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights.
+Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/major options), build wheels via `uvx build`, push them with `uvx twine upload`, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights.
 
 Last commit id: 3f9586824e15e3a7fc6f1787a6d98621b9a992f6

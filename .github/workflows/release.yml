@@ -45,8 +45,11 @@ jobs:
         env:
           LANG: en_US.UTF-8
 
+      - name: Build distribution
+        run: uvx build
+
       - name: Publish to PyPI
-        run: uv publish --token "$PYPI_TOKEN"
+        run: uvx twine upload dist/* --non-interactive --username __token__ --password "$PYPI_TOKEN"
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
