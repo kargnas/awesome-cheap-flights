@@ -1,4 +1,8 @@
 # Sample configuration for awesome-cheap-flights (lightweight for tests)
+currency: USD
+# currency: KRW # Korean Won
+# currency: JPY # Japanese Yen
+# currency: CNY # Chinese Yuan
 
 departures:
   - ICN  # Seoul Incheon
@@ -16,3 +20,4 @@ output_path: output/sample.csv
 request_delay: 0.5
 max_retries: 1
 max_leg_results: 3
+

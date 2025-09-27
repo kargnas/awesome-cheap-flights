@@ -13,12 +13,11 @@ def bump_version(text: str, level: str) -> tuple[str, str]:
     match = VERSION_PATTERN.search(text)
     if not match:
         raise SystemExit("Could not locate version in pyproject.toml")
+    if level == "current":
+        new_version = f"{match.group(2)}.{match.group(3)}.{match.group(4)}"
+        return new_version, text
     major, minor, patch = (int(match.group(i)) for i in range(2, 5))
-    if level == "major":
-        major += 1
-        minor = 0
-        patch = 0
-    elif level == "minor":
+    if level == "minor":
         minor += 1
         patch = 0
     else:
@@ -39,9 +38,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--level",
-        choices=("patch", "minor", "major"),
+        choices=("patch", "minor", "current"),
         default="patch",
-        help="Which part of the version to increment (default: patch)",
+        help="Which part of the version to increment (default: patch). Use 'current' to keep the version unchanged.",
     )
     return parser.parse_args()
 

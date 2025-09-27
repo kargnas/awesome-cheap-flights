@@ -29,45 +29,41 @@ class SearchConfig:
     request_delay: float = 1.0
     max_retries: int = 2
     max_leg_results: int = 10
+    currency_code: str = "USD"
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
+        self.currency_code = self.currency_code.upper()
 
 
 @dataclass
 class LegFlight:
     airline_name: str
-    departure_time: str
+    departure_at: str
     stops: str
-    stop_detail: str
-    price_raw: str
-    price_numeric: Optional[int]
+    stop_notes: str
+    price: Optional[int]
     is_best: bool
 
 
 @dataclass
 class ItineraryRow:
-    origin_name: str
-    origin_iata: str
-    destination_city: str
-    destination_country: str
-    destination_iata: str
-    departure_date: str
-    return_date: str
+    origin_code: str
+    destination_code: str
+    outbound_departure_at: str
+    return_departure_at: str
     outbound_airline: str
     outbound_stops: str
-    outbound_stop_detail: str
-    outbound_price_raw: str
-    outbound_price_numeric: Optional[int]
+    outbound_stop_notes: str
+    outbound_price: Optional[int]
     outbound_is_best: bool
     return_airline: str
     return_stops: str
-    return_stop_detail: str
-    return_price_raw: str
-    return_price_numeric: Optional[int]
+    return_stop_notes: str
+    return_price: Optional[int]
     return_is_best: bool
-    total_price_numeric: Optional[int]
-    total_price_label: str
+    total_price: Optional[int]
+    currency: str
 
 
 def standardize_time(raw: str, year_hint: int) -> str:
@@ -256,11 +252,10 @@ def fetch_leg_flights(
         flights.append(
             LegFlight(
                 airline_name=flight.name,
-                departure_time=departure_std,
+                departure_at=departure_std,
                 stops=describe_stops(flight.stops, stop_text),
-                stop_detail=stop_detail,
-                price_raw=flight.price,
-                price_numeric=parse_price_to_int(flight.price),
+                stop_notes=stop_detail,
+                price=parse_price_to_int(flight.price),
                 is_best=flight.is_best,
             )
         )
@@ -268,14 +263,9 @@ def fetch_leg_flights(
     return flights
 
 
-def format_currency(value: int) -> str:
-    return f"₩{value:,}"
-
-
 def build_itineraries(
     *,
     config: SearchConfig,
-    origin_name: str,
     origin_code: str,
     destination: Dict[str, str],
     departure_date: str,
@@ -309,37 +299,27 @@ def build_itineraries(
 
     for outbound in outbound_flights:
         for inbound in return_flights:
-            total_price_numeric: Optional[int] = None
-            if outbound.price_numeric is not None and inbound.price_numeric is not None:
-                total_price_numeric = outbound.price_numeric + inbound.price_numeric
-            total_label = (
-                format_currency(total_price_numeric)
-                if total_price_numeric is not None
-                else ""
-            )
+            total_price: Optional[int] = None
+            if outbound.price is not None and inbound.price is not None:
+                total_price = outbound.price + inbound.price
             rows.append(
                 ItineraryRow(
-                    origin_name=origin_name,
-                    origin_iata=origin_code,
-                    destination_city=destination["city"],
-                    destination_country=destination["country"],
-                    destination_iata=destination["iata"],
-                    departure_date=outbound.departure_time,
-                    return_date=inbound.departure_time,
+                    origin_code=origin_code,
+                    destination_code=destination["iata"],
+                    outbound_departure_at=outbound.departure_at,
+                    return_departure_at=inbound.departure_at,
                     outbound_airline=outbound.airline_name,
                     outbound_stops=outbound.stops,
-                    outbound_stop_detail=outbound.stop_detail,
-                    outbound_price_raw=outbound.price_raw,
-                    outbound_price_numeric=outbound.price_numeric,
+                    outbound_stop_notes=outbound.stop_notes,
+                    outbound_price=outbound.price,
                     outbound_is_best=outbound.is_best,
                     return_airline=inbound.airline_name,
                     return_stops=inbound.stops,
-                    return_stop_detail=inbound.stop_detail,
-                    return_price_raw=inbound.price_raw,
-                    return_price_numeric=inbound.price_numeric,
+                    return_stop_notes=inbound.stop_notes,
+                    return_price=inbound.price,
                     return_is_best=inbound.is_best,
-                    total_price_numeric=total_price_numeric,
-                    total_price_label=total_label,
+                    total_price=total_price,
+                    currency=config.currency_code,
                 )
             )
     return rows
@@ -360,7 +340,7 @@ def write_csv(rows: Sequence[ItineraryRow], output_path: Path) -> None:
 
 def run_search(config: SearchConfig) -> List[ItineraryRow]:
     all_rows: List[ItineraryRow] = []
-    for origin_name, origin_code in config.origins.items():
+    for _, origin_code in config.origins.items():
         for destination in config.destinations:
             for departure_date, return_date in config.itineraries:
                 print(
@@ -369,7 +349,6 @@ def run_search(config: SearchConfig) -> List[ItineraryRow]:
                 )
                 rows = build_itineraries(
                     config=config,
-                    origin_name=origin_name,
                     origin_code=origin_code,
                     destination=destination,
                     departure_date=departure_date,

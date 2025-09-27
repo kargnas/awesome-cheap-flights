@@ -1,5 +1,7 @@
 # Awesome Cheap Flights
 
+[![release](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml)
+
 Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a browser.
 
 ## Quick win (uvx)
@@ -12,7 +14,7 @@ uvx awesome-cheap-flights \
   --destination FUK \
   --itinerary 2026-01-01:2026-01-04
 ```
-3. Crack open the CSV in your spreadsheet app and sort by `total_price_label`.
+3. Crack open the CSV in your spreadsheet app and sort by `total_price`.
 
 `uvx` pulls the published package from PyPI, so there is no clone or setup step.
 
@@ -32,7 +34,7 @@ awesome-cheap-flights --output output/sample.csv --departure ICN --destination F
 
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
-- CLI overrides cover **departures**, **destinations**, **itineraries**, and the **output CSV path**.
+- CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, and `currency`.
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
 
@@ -53,11 +55,19 @@ output_path: output/flights2.csv
 request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
+currency: USD
 ```
 Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy `departure`/`return`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
 
 ## Output format
-CSV headers include `departure_date`, `return_date`, airline, stop details, per-leg fares, and a computed `total_price_label` when numeric values are present.
+Each row contains these fields:
+- `origin_code`, `destination_code`: IATA codes for the searched pair.
+- `outbound_departure_at`, `return_departure_at`: normalized timestamps (local date/time parsed from Google Flights).
+- `outbound_airline` / `return_airline`: carrier labels from Google Flights.
+- `outbound_stops`, `outbound_stop_notes` (and return equivalents): stop counts plus layover snippets when available.
+- `outbound_price`, `return_price`: per-leg integer fares (digits only).
+- `total_price`: summed outbound + return integers when both legs expose fares, otherwise blank.
+- `currency`: ISO code from config/CLI (defaults to `USD`).
 
 ## Project layout
 - `awesome_cheap_flights/cli.py`: CLI entry point used by the console script/uvx
@@ -65,6 +75,6 @@ CSV headers include `departure_date`, `return_date`, airline, stop details, per-
 - `awesome_cheap_flights/pipeline.py`: reusable pipeline encapsulating scraping, combination, and CSV export
 
 ## Release automation
-Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/major options), build wheels via `uvx --from build pyproject-build --wheel --sdist`, push them with `uvx --from twine twine upload`, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights.
+Trigger the `release` GitHub Actions workflow (workflow_dispatch) to bump the version (patch by default, with minor/current options), build wheels via `uv tool run --from build pyproject-build --wheel --sdist`, push them with `uvx --from twine twine upload`, tag, push, and open a GitHub Release. Provide a `PYPI_TOKEN` secret with publish rights. Select current to reuse the existing version number.
 
-Last commit id: 3f9586824e15e3a7fc6f1787a6d98621b9a992f6
+Last commit id: ca198005ee5a9a8eaa69fa9ff40f0cfd765f4ce9

@@ -14,6 +14,7 @@ DEFAULT_CONFIG_FILE = Path("config.yaml")
 DEFAULT_REQUEST_DELAY = 1.0
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_MAX_LEG_RESULTS = 10
+DEFAULT_CURRENCY = "USD"
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
 COMMENT_MARKERS = ("#",)
@@ -217,6 +218,11 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     max_retries = int(config_data.get("max_retries", DEFAULT_MAX_RETRIES))
     max_leg_results = int(config_data.get("max_leg_results", DEFAULT_MAX_LEG_RESULTS))
 
+    currency_value = strip_comment(config_data.get("currency", DEFAULT_CURRENCY))
+    if args.currency:
+        currency_value = strip_comment(args.currency)
+    currency_value = currency_value.upper() if currency_value else DEFAULT_CURRENCY
+
     return SearchConfig(
         origins=departures,
         destinations=destinations,
@@ -225,6 +231,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         request_delay=request_delay,
         max_retries=max_retries,
         max_leg_results=max_leg_results,
+        currency_code=currency_value,
     )
 
 
@@ -252,6 +259,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output",
         help="Output CSV path",
+    )
+    parser.add_argument(
+        "--currency",
+        help="ISO currency code for aggregated prices (default: USD)",
     )
     return parser.parse_args(argv)
 

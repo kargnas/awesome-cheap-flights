@@ -46,8 +46,8 @@
 - Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 
 ## Release / Publishing
-- `scripts/bump_version.py --level {patch|minor|major}` updates `pyproject.toml` and writes the new version to stdout (and optional file).
+- `scripts/bump_version.py --level {patch|minor|current}` updates `pyproject.toml` and writes the new version to stdout (and optional file). Use `current` to reuse the existing version.
 - `.github/workflows/release.yml` bumps the chosen level, builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 93018d0ca7cda0b508f3e68d7dd45485f49963f6
+Last commit id: ca198005ee5a9a8eaa69fa9ff40f0cfd765f4ce9
