@@ -63,8 +63,9 @@ Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy 
 Each row contains these fields:
 - `origin_code`, `destination_code`: IATA codes for the searched pair.
 - `outbound_departure_at`, `return_departure_at`: normalized timestamps (local date/time parsed from Google Flights).
+- `outbound_duration_hours`, `return_duration_hours`: decimal hour durations (e.g., 36.5 for 36h 30m).
 - `outbound_airline` / `return_airline`: carrier labels from Google Flights.
-- `outbound_stops`, `outbound_stop_notes` (and return equivalents): stop counts plus layover snippets when available.
+- `outbound_stops`, `outbound_stop_notes` (and return equivalents): stop counts plus any layover airport IATA codes.
 - `outbound_price`, `return_price`: per-leg integer fares (digits only).
 - `total_price`: summed outbound + return integers when both legs expose fares, otherwise blank.
 - `currency`: ISO code from config/CLI (defaults to `USD`).

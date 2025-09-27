@@ -42,6 +42,7 @@ class LegFlight:
     departure_at: str
     stops: str
     stop_notes: str
+    duration_hours: Optional[float]
     price: Optional[int]
     is_best: bool
 
@@ -51,7 +52,9 @@ class ItineraryRow:
     origin_code: str
     destination_code: str
     outbound_departure_at: str
+    outbound_duration_hours: Optional[float]
     return_departure_at: str
+    return_duration_hours: Optional[float]
     outbound_airline: str
     outbound_stops: str
     outbound_stop_notes: str
@@ -91,6 +94,31 @@ def standardize_time(raw: str, year_hint: int) -> str:
 def parse_price_to_int(price: str) -> Optional[int]:
     digits = "".join(ch for ch in price if ch.isdigit())
     return int(digits) if digits else None
+
+
+def parse_duration_to_hours(raw: str) -> Optional[float]:
+    if not raw:
+        return None
+    match = DURATION_PATTERN.search(raw)
+    if not match:
+        return None
+    hours = int(match.group("hours")) if match.group("hours") else 0
+    minutes = int(match.group("minutes")) if match.group("minutes") else 0
+    total_minutes = hours * 60 + minutes
+    if total_minutes == 0:
+        return None
+    value = total_minutes / 60
+    return round(value, 2)
+
+
+def extract_stop_codes(raw: str) -> str:
+    if not raw:
+        return ""
+    codes = []
+    for token in re.findall(r"[A-Z]{3}", raw):
+        if token not in codes:
+            codes.append(token)
+    return " ".join(codes)
 
 
 def describe_stops(stop_value: object, stop_text: str) -> str:
@@ -141,9 +169,9 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], Tuple[str, st
                 val = span.text(strip=True)
                 if val and val not in layover_values:
                     layover_values.append(val)
-            layover_str = "; ".join(layover_values)
+            layover_codes = extract_stop_codes(" ".join(layover_values))
             key = (name, " ".join(departure_time.split()), price_clean)
-            details.setdefault(key, (stop_text, layover_str))
+            details.setdefault(key, (stop_text, layover_codes))
 
     return details
 
@@ -249,12 +277,14 @@ def fetch_leg_flights(
         if not departure_std:
             continue
         stop_text, stop_detail = layover_lookup.get(key, ("", ""))
+        notes = stop_detail or extract_stop_codes(stop_text)
         flights.append(
             LegFlight(
                 airline_name=flight.name,
                 departure_at=departure_std,
                 stops=describe_stops(flight.stops, stop_text),
-                stop_notes=stop_detail,
+                stop_notes=notes,
+                duration_hours=parse_duration_to_hours(flight.duration),
                 price=parse_price_to_int(flight.price),
                 is_best=flight.is_best,
             )
@@ -307,7 +337,9 @@ def build_itineraries(
                     origin_code=origin_code,
                     destination_code=destination["iata"],
                     outbound_departure_at=outbound.departure_at,
+                    outbound_duration_hours=outbound.duration_hours,
                     return_departure_at=inbound.departure_at,
+                    return_duration_hours=inbound.duration_hours,
                     outbound_airline=outbound.airline_name,
                     outbound_stops=outbound.stops,
                     outbound_stop_notes=outbound.stop_notes,

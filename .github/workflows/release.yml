@@ -104,7 +104,7 @@ jobs:
 
       - name: Build distribution
         if: steps.eligibility.outputs.should_release == 'true'
-        run: uv tool run --from build pyproject-build --wheel --sdist
+        run: uvx --from build pyproject-build --wheel --sdist
 
       - name: Publish to PyPI
         if: steps.eligibility.outputs.should_release == 'true'
