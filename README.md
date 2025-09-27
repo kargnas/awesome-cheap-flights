@@ -32,14 +32,13 @@ itineraries:
   - outbound:
       start: 2026-01-02
       end: 2026-01-03
-      step: 1
     inbound: 2026-01-05
 output_path: output/flights2.csv
 request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 ```
-Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy `departure`/`return`. Each side accepts a string date, a list of dates, or a `{start, end, step}` range; every combination of expanded outbound/inbound dates is searched.
+Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy `departure`/`return`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
 
 ## Output format
 The script writes to the path you provide. `departure_date` and `return_date` columns store outbound and inbound departure timestamps in `YYYY-MM-DD HH:MM:SS` format. Stop details and fare breakdowns are captured per leg, and a summed `total_price_label` appears when both fare components are numeric.

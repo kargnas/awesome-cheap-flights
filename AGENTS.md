@@ -37,4 +37,4 @@
 
 ## Configuration Tips
 - Store local secrets or large route lists in `config.yaml` (git-ignored). Use `sample.config.yaml` only for reproducible smoke tests.
-- Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end, step}` blocks.
+- Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.

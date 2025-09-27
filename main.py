@@ -112,18 +112,17 @@ def expand_dates(field: Any) -> List[str]:
         end_raw = strip_comment(field.get("end", start_raw))
         if not start_raw or not end_raw:
             raise ValueError(f"Date range requires 'start' and 'end': {field}")
-        step = int(field.get("step", 1))
+        if "step" in field:
+            raise ValueError("Date range 'step' option is no longer supported")
         start_date = datetime.strptime(start_raw, DATE_FMT).date()
         end_date = datetime.strptime(end_raw, DATE_FMT).date()
-        if step <= 0:
-            raise ValueError("Date range step must be positive")
         if end_date < start_date:
             raise ValueError("Date range end must be on or after start")
         current = start_date
         dates: List[str] = []
         while current <= end_date:
             dates.append(current.strftime(DATE_FMT))
-            current += timedelta(days=step)
+            current += timedelta(days=1)
         return dates
     raise ValueError(f"Unsupported date format: {field}")
 
