@@ -1,0 +1,68 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Version bump level
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Bump version
+        id: bump
+        run: |
+          python3 scripts/bump_version.py --level ${{ inputs.level }} --output version.env
+          cat version.env >> "$GITHUB_OUTPUT"
+          rm version.env
+
+      - name: Commit version bump
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit" && exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: release v${{ steps.bump.outputs.version }}"
+        env:
+          LANG: en_US.UTF-8
+
+      - name: Publish to PyPI
+        run: uv publish --token "$PYPI_TOKEN"
+        env:
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Create tag
+        run: git tag v${{ steps.bump.outputs.version }}
+
+      - name: Push changes
+        run: |
+          git push origin HEAD
+          git push origin v${{ steps.bump.outputs.version }}
+
+      - name: Create GitHub release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          release_name: v${{ steps.bump.outputs.version }}
+          body: Automated release for v${{ steps.bump.outputs.version }}

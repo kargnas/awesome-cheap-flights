@@ -5,7 +5,7 @@ requires-python = ">=3.10"
 [[package]]
 name = "awesome-cheap-flights"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "fast-flights" },
     { name = "json5" },

@@ -1,7 +1,7 @@
 [project]
 name = "awesome-cheap-flights"
 version = "0.1.0"
-description = "Add your description here"
+description = "Weekend-hopper toolkit for ICN short-haul scouting"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -10,3 +10,27 @@ dependencies = [
     "pyyaml>=6.0.3",
     "typing-extensions>=4.15.0",
 ]
+
+authors = [{ name = "Awesome Cheap Flights Maintainers" }]
+license = { text = "MIT" }
+keywords = ["flights", "travel", "scraper"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+[project.scripts]
+awesome-cheap-flights = "awesome_cheap_flights.cli:main"
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["awesome_cheap_flights*"]
+
+[project.urls]
+homepage = "https://github.com/awesome-cheap-flights/awesome-cheap-flights"
+source = "https://github.com/awesome-cheap-flights/awesome-cheap-flights"
+issues = "https://github.com/awesome-cheap-flights/awesome-cheap-flights/issues"
