@@ -20,6 +20,8 @@ TIME_PATTERN = re.compile(
 )
 
 
+DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
+
 @dataclass
 class SearchConfig:
     origins: Dict[str, str]
