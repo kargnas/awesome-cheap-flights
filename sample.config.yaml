@@ -1,0 +1,18 @@
+# Sample configuration for awesome-cheap-flights (lightweight for tests)
+
+departures:
+  - ICN  # Seoul Incheon
+
+destinations:
+  - FUK  # Fukuoka
+
+itineraries:
+  - outbound:
+      start: 2025-10-06
+      end: 2025-10-06
+    inbound: 2025-10-09
+
+output_path: output/sample.csv
+request_delay: 0.5
+max_retries: 1
+max_leg_results: 3
