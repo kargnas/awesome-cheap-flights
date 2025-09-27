@@ -1,10 +1,13 @@
 # Repository Guidelines
 
-<writing_style />
-- Tone: UI용 간결체 영어, 예시 4-5 사용
-- Rule: 문장 길이 최대 12단어, 시간 안내 시 분 단위 표기
-- Rule: 문장 끝은 마침표로 마무리
+<writing_style>
+- Tone: Concise English for UI.
+- Use 4-5 examples.
+- Rule: Max 12 words per sentence.
+- Rule: Time info in minutes.
+- Rule: End each sentence with a period.
 - Example: Summary delayed. Retry in about 5 min.
+</writing_style>
 
 
 ## Project Structure & Module Organization
