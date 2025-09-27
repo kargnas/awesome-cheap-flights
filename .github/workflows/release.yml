@@ -1,6 +1,9 @@
 name: release
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       level:
@@ -17,7 +20,10 @@ permissions:
 
 jobs:
   release:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
+    env:
+      DISPATCH_LEVEL: ${{ github.event.inputs.level }}
     environment:
       name: pypi release
     steps:
@@ -26,17 +32,66 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check release eligibility
+        id: eligibility
+        shell: bash
+        run: |
+          set -eo pipefail
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$last_tag" ]; then
+            base_commit=$(git rev-list -n1 "$last_tag")
+          else
+            base_commit=$(git rev-list --max-parents=0 HEAD)
+          fi
+          head_commit=$(git rev-parse HEAD)
+          if [ "$base_commit" = "$head_commit" ]; then
+            echo "No new commits since last release (commit $head_commit). Skipping release." >> "$GITHUB_STEP_SUMMARY"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          release=false
+          while IFS= read -r file; do
+            case "$file" in
+              awesome_cheap_flights/*.py)
+                release=true
+                break
+                ;;
+              *.toml)
+                if [[ "$file" != */* ]]; then
+                  release=true
+                  break
+                fi
+                ;;
+              uv.lock)
+                release=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "$base_commit" "$head_commit")
+          if [ "$release" != "true" ]; then
+            echo "No eligible files changed since $base_commit. Skipping release." >> "$GITHUB_STEP_SUMMARY"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+          echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
+          echo "Releasing for changes relative to $base_commit." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v1
+        if: steps.eligibility.outputs.should_release == 'true'
 
       - name: Bump version
         id: bump
+        if: steps.eligibility.outputs.should_release == 'true'
         run: |
-          python3 scripts/bump_version.py --level ${{ inputs.level }} --output version.env
+          LEVEL="${DISPATCH_LEVEL:-patch}"
+          python3 scripts/bump_version.py --level "$LEVEL" --output version.env
           cat version.env >> "$GITHUB_OUTPUT"
           rm version.env
 
       - name: Commit version bump
+        if: steps.eligibility.outputs.should_release == 'true'
         run: |
           if git diff --quiet; then
             echo "No changes to commit" && exit 0
@@ -48,22 +103,27 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Build distribution
+        if: steps.eligibility.outputs.should_release == 'true'
         run: uv tool run --from build pyproject-build --wheel --sdist
 
       - name: Publish to PyPI
+        if: steps.eligibility.outputs.should_release == 'true'
         run: uvx --from twine twine upload dist/* --non-interactive --username __token__ --password "$PYPI_TOKEN"
         env:
           PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
 
       - name: Create tag
+        if: steps.eligibility.outputs.should_release == 'true'
         run: git tag v${{ steps.bump.outputs.version }}
 
       - name: Push changes
+        if: steps.eligibility.outputs.should_release == 'true'
         run: |
           git push origin HEAD
           git push origin v${{ steps.bump.outputs.version }}
 
       - name: Create GitHub release
+        if: steps.eligibility.outputs.should_release == 'true'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
