@@ -89,10 +89,10 @@ Push to `main` triggers the `release` workflow automatically with a patch bump, 
 1. uv가 없다면 아래 설치 표를 참고해 설치한다.
 2. 다음 명령을 실행한다:
 ```bash
-uvx awesome-cheap-flights \\
-  --output output/sample.csv \\
-  --departure ICN \\
-  --destination FUK \\
+uvx awesome-cheap-flights \
+  --output output/sample.csv \
+  --departure ICN \
+  --destination FUK \
   --itinerary 2026-01-01:2026-01-04
 ```
 3. 스프레드시트 앱에서 CSV를 열고 `total_price` 기준으로 정렬한다.
@@ -162,10 +162,10 @@ currency: USD
 1. 如果还没有安装 uv，请参考下方安装表进行安装。
 2. 运行以下命令：
 ```bash
-uvx awesome-cheap-flights \\
-  --output output/sample.csv \\
-  --departure ICN \\
-  --destination FUK \\
+uvx awesome-cheap-flights \
+  --output output/sample.csv \
+  --departure ICN \
+  --destination FUK \
   --itinerary 2026-01-01:2026-01-04
 ```
 3. 在表格软件中打开 CSV，并按 `total_price` 排序。
