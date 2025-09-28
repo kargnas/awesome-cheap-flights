@@ -60,6 +60,18 @@ Open the CSV and sort by `total_price` in your spreadsheet app.
 
 `uvx` pulls the published package from PyPI, so you do not need to clone or configure anything else.
 
+## Local dev run
+
+```bash
+uv run python -m awesome_cheap_flights.cli \
+  --config config.yaml \
+  --output output/dev.csv
+```
+
+- Update `config.yaml` to tweak departures, destinations, or itineraries.
+- Need a clean cache? Set `UV_CACHE_DIR=$(pwd)/.cache/uv` before the command.
+- Generated CSV lands at `output/dev.csv`; sort by `total_price` after runs.
+
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
 - CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, and `currency`.
@@ -325,4 +337,4 @@ currency: USD
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: 4f49241ff281f046d9bbfcdad6e9281a6974e30e
+Last commit id: 364891f6c95e92dd7d63c2f91c4d5bb946a89af6
