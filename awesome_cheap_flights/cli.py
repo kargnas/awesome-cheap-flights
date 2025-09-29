@@ -15,6 +15,7 @@ DEFAULT_REQUEST_DELAY = 1.0
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_MAX_LEG_RESULTS = 10
 DEFAULT_CURRENCY = "USD"
+DEFAULT_PASSENGERS = 1
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
 COMMENT_MARKERS = ("#",)
@@ -223,6 +224,19 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         currency_value = strip_comment(args.currency)
     currency_value = currency_value.upper() if currency_value else DEFAULT_CURRENCY
 
+    passengers_value = config_data.get("passengers", DEFAULT_PASSENGERS)
+    if args.passengers is not None:
+        passengers_value = args.passengers
+    passengers_raw = strip_comment(passengers_value)
+    if not passengers_raw:
+        raise ValueError("Passenger count must be provided")
+    try:
+        passenger_count = int(passengers_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid passenger count: {passengers_value}") from exc
+    if passenger_count < 1:
+        raise ValueError("Passenger count must be at least 1")
+
     return SearchConfig(
         origins=departures,
         destinations=destinations,
@@ -232,6 +246,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         max_retries=max_retries,
         max_leg_results=max_leg_results,
         currency_code=currency_value,
+        passenger_count=passenger_count,
     )
 
 
@@ -263,6 +278,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--currency",
         help="ISO currency code for aggregated prices (default: USD)",
+    )
+    parser.add_argument(
+        "--passengers",
+        type=int,
+        help="Number of adult passengers to include in the fare search",
     )
     return parser.parse_args(argv)
 

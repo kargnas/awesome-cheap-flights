@@ -32,10 +32,17 @@ class SearchConfig:
     max_retries: int = 2
     max_leg_results: int = 10
     currency_code: str = "USD"
+    passenger_count: int = 1
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
         self.currency_code = self.currency_code.upper()
+        try:
+            self.passenger_count = int(self.passenger_count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid passenger count: {self.passenger_count}") from exc
+        if self.passenger_count < 1:
+            raise ValueError("Passenger count must be at least 1")
 
 
 @dataclass
@@ -184,12 +191,13 @@ def fetch_leg_html(
     destination_code: str,
     departure_date: str,
     max_stops: int,
+    passenger_count: int,
 ) -> str:
     flight_data = build_flight_data(origin_code, destination_code, departure_date)
     filter_payload = TFSData.from_interface(
         flight_data=flight_data,
         trip="one-way",
-        passengers=Passengers(adults=1),
+        passengers=Passengers(adults=passenger_count),
         seat="economy",
         max_stops=max_stops,
     )
@@ -228,7 +236,7 @@ def fetch_leg_flights(
             result = get_flights(
                 flight_data=flight_data,
                 trip="one-way",
-                passengers=Passengers(adults=1),
+                passengers=Passengers(adults=config.passenger_count),
                 seat="economy",
                 fetch_mode="common",
                 max_stops=max_stops,
@@ -238,6 +246,7 @@ def fetch_leg_flights(
                 destination_code=destination_code,
                 departure_date=departure_date,
                 max_stops=max_stops,
+                passenger_count=config.passenger_count,
             )
             if html:
                 layover_lookup = parse_layover_details(html)
