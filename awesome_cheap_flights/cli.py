@@ -16,6 +16,7 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_MAX_LEG_RESULTS = 10
 DEFAULT_CURRENCY = "USD"
 DEFAULT_PASSENGERS = 1
+DEFAULT_MAX_STOPS = 2
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
 COMMENT_MARKERS = ("#",)
@@ -237,6 +238,19 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     if passenger_count < 1:
         raise ValueError("Passenger count must be at least 1")
 
+    max_stops_value = config_data.get("max_stops", DEFAULT_MAX_STOPS)
+    if args.max_stops is not None:
+        max_stops_value = args.max_stops
+    max_stops_raw = strip_comment(max_stops_value)
+    if max_stops_raw == "":
+        raise ValueError("Max stops must be provided")
+    try:
+        max_stops = int(max_stops_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid max stops: {max_stops_value}") from exc
+    if max_stops < 0 or max_stops > 2:
+        raise ValueError("Max stops must be between 0 and 2")
+
     return SearchConfig(
         origins=departures,
         destinations=destinations,
@@ -247,6 +261,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         max_leg_results=max_leg_results,
         currency_code=currency_value,
         passenger_count=passenger_count,
+        max_stops=max_stops,
     )
 
 
@@ -283,6 +298,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--passengers",
         type=int,
         help="Number of adult passengers to include in the fare search",
+    )
+    parser.add_argument(
+        "--max-stops",
+        type=int,
+        help="Maximum stops per leg (0=nonstop, 1=one stop, 2=two stops)",
     )
     return parser.parse_args(argv)
 

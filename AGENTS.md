@@ -45,10 +45,11 @@
 - Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.
 - Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 - Use the `passengers` key to control the number of adult seats (defaults to 1).
+- Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops).
 
 ## Release / Publishing
 - `scripts/bump_version.py --level {patch|minor|current}` updates `pyproject.toml` and writes the new version to stdout (and optional file). Use `current` to reuse the existing version.
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; it builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: bb9947fdede2e666b4624866e31c02915e7fc7ce
+Last commit id: 9871c231b221412f209baf85de6444043b677a2d

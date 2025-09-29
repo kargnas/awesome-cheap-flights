@@ -20,4 +20,5 @@ output_path: output/sample.csv
 request_delay: 0.5
 max_retries: 1
 max_leg_results: 3
+max_stops: 2  # 0=nonstop, 1=one stop, 2=two stops
 passengers: 1  # Total adult passengers

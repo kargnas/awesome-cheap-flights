@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from fast_flights import FlightData, Passengers, Result, get_flights
-from fast_flights.core import fetch as core_fetch
+from fast_flights import FlightData, Passengers, Result
+from fast_flights.core import fetch as core_fetch, get_flights_from_filter
 from fast_flights.fallback_playwright import fallback_playwright_fetch
 from fast_flights.flights_impl import TFSData
 from selectolax.lexbor import LexborHTMLParser
@@ -33,6 +33,7 @@ class SearchConfig:
     max_leg_results: int = 10
     currency_code: str = "USD"
     passenger_count: int = 1
+    max_stops: int = 2
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
@@ -43,6 +44,12 @@ class SearchConfig:
             raise ValueError(f"Invalid passenger count: {self.passenger_count}") from exc
         if self.passenger_count < 1:
             raise ValueError("Passenger count must be at least 1")
+        try:
+            self.max_stops = int(self.max_stops)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
+        if self.max_stops < 0 or self.max_stops > 2:
+            raise ValueError("Max stops must be between 0 and 2")
 
 
 @dataclass
@@ -192,6 +199,7 @@ def fetch_leg_html(
     departure_date: str,
     max_stops: int,
     passenger_count: int,
+    currency_code: str,
 ) -> str:
     flight_data = build_flight_data(origin_code, destination_code, departure_date)
     filter_payload = TFSData.from_interface(
@@ -205,7 +213,7 @@ def fetch_leg_html(
         "tfs": filter_payload.as_b64().decode("utf-8"),
         "hl": "en",
         "tfu": "EgQIABABIgA",
-        "curr": "",
+        "curr": currency_code,
     }
     try:
         response = core_fetch(params)
@@ -224,7 +232,7 @@ def fetch_leg_flights(
     origin_code: str,
     destination_code: str,
     departure_date: str,
-    max_stops: int = 2,
+    max_stops: int,
 ) -> List[LegFlight]:
     last_exc: Optional[Exception] = None
     result: Optional[Result] = None
@@ -233,13 +241,17 @@ def fetch_leg_flights(
     for attempt in range(1, config.max_retries + 1):
         try:
             flight_data = build_flight_data(origin_code, destination_code, departure_date)
-            result = get_flights(
+            filter_payload = TFSData.from_interface(
                 flight_data=flight_data,
                 trip="one-way",
                 passengers=Passengers(adults=config.passenger_count),
                 seat="economy",
-                fetch_mode="common",
                 max_stops=max_stops,
+            )
+            result = get_flights_from_filter(
+                filter_payload,
+                currency=config.currency_code,
+                mode="common",
             )
             html = fetch_leg_html(
                 origin_code=origin_code,
@@ -247,6 +259,7 @@ def fetch_leg_flights(
                 departure_date=departure_date,
                 max_stops=max_stops,
                 passenger_count=config.passenger_count,
+                currency_code=config.currency_code,
             )
             if html:
                 layover_lookup = parse_layover_details(html)
@@ -317,6 +330,7 @@ def build_itineraries(
         origin_code=origin_code,
         destination_code=destination["iata"],
         departure_date=departure_date,
+        max_stops=config.max_stops,
     )
     time.sleep(config.request_delay)
     return_flights = fetch_leg_flights(
@@ -324,6 +338,7 @@ def build_itineraries(
         origin_code=destination["iata"],
         destination_code=origin_code,
         departure_date=return_date,
+        max_stops=config.max_stops,
     )
 
     if not outbound_flights or not return_flights:

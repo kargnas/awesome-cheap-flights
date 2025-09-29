@@ -74,10 +74,11 @@ uv run python -m awesome_cheap_flights.cli \
 
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
-- CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, `currency`, and `passengers`.
+- CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, `currency`, `passengers`, and `max_stops`.
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
 - Set `passengers` to the number of adult seats you want to request (default: 1).
+- Use `max_stops` to cap connections per leg (0=nonstop, 1=one stop, 2=two stops).
 
 ### YAML sample
 ```yaml
@@ -97,6 +98,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
+max_stops: 2
 passengers: 1
 ```
 Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy `departure`/`return`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
@@ -152,10 +154,11 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 
 ### 설정 심화
 - 고급 옵션(요청 지연, 재시도 횟수, 구간별 제한)은 YAML에 있다.
-- CLI 옵션으로 **departures**, **destinations**, **itineraries**, **output CSV 경로**, `currency`, `passengers`를 덮어쓸 수 있다.
+- CLI 옵션으로 **departures**, **destinations**, **itineraries**, **output CSV 경로**, `currency`, `passengers`, `max_stops`를 덮어쓸 수 있다.
 - `#`로 인라인 주석을 달아 공항 메모를 남길 수 있다.
 - 프로젝트 루트의 `config.yaml`이 자동으로 로드되며, 없으면 `--config`나 `AWESOME_CHEAP_FLIGHTS_CONFIG` 환경 변수를 사용한다.
 - `passengers`에 원하는 성인 좌석 수를 넣으면 된다(기본 1명).
+- `max_stops`로 허용 경유 횟수를 제한하라(0=논스탑, 1=한 번, 2=두 번).
 
 ### YAML 예시
 ```yaml
@@ -175,6 +178,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
+max_stops: 2
 passengers: 1
 ```
 각 여정 항목은 `outbound`/`inbound`(권장) 또는 기존 `departure`/`return`을 사용할 수 있다. 각 필드는 문자열 날짜, 날짜 목록, `{start, end}` 범위를 허용하며 범위는 하루씩 확장되어 가능한 조합을 모두 검색한다.
@@ -226,10 +230,11 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 
 ### 配置详解
 - 高级参数（请求延迟、重试次数、每段限制）在 YAML 中配置。
-- CLI 可覆盖 **departures**、**destinations**、**itineraries**、**输出 CSV 路径**、`currency`、`passengers`。
+- CLI 可覆盖 **departures**、**destinations**、**itineraries**、**输出 CSV 路径**、`currency`、`passengers`、`max_stops`。
 - 使用 `#` 添加行内注释，方便记录机场信息。
 - 项目根目录的 `config.yaml` 会自动载入；若不存在，可使用 `--config` 或环境变量 `AWESOME_CHEAP_FLIGHTS_CONFIG`。
 - 将 `passengers` 设置为所需成人人数（默认 1）。
+- 用 `max_stops` 限制每段允许的经停次数（0=直飞，1=一段经停，2=两段经停）。
 
 ### YAML 示例
 ```yaml
@@ -249,6 +254,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
+max_stops: 2
 passengers: 1
 ```
 每个行程可以使用 `outbound`/`inbound`（推荐）或旧版的 `departure`/`return`。各字段支持单个日期、日期列表或 `{start, end}` 范围；范围会按天展开，遍历所有组合。
@@ -301,10 +307,11 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 
 ### 設定の詳細
 - 高度なパラメータ（リクエスト遅延、リトライ回数、区間ごとの制限）は YAML で管理する。
-- CLI では **departures**、**destinations**、**itineraries**、**出力 CSV パス**、`currency`、`passengers` を上書きできる。
+- CLI では **departures**、**destinations**、**itineraries**、**出力 CSV パス**、`currency`、`passengers`、`max_stops` を上書きできる。
 - `#` を使って行内コメントを追加し、空港メモを残せる。
 - プロジェクト直下の `config.yaml` が自動で読み込まれる。存在しない場合は `--config` か `AWESOME_CHEAP_FLIGHTS_CONFIG` 環境変数を利用する。
 - `passengers` に希望する大人人数を設定する（既定値 1）。
+- `max_stops` で各区間の経由回数を制限する（0=直行、1=1回、2=2回）。
 
 ### YAML サンプル
 ```yaml
@@ -324,6 +331,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
+max_stops: 2
 passengers: 1
 ```
 各行程は `outbound`/`inbound`（推奨）または旧式の `departure`/`return` を指定できる。フィールドには単一日付、日付リスト、`{start, end}` 範囲が使え、範囲は日単位で展開されて全組み合わせを検索する。
@@ -345,4 +353,4 @@ passengers: 1
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: bb9947fdede2e666b4624866e31c02915e7fc7ce
+Last commit id: 9871c231b221412f209baf85de6444043b677a2d
