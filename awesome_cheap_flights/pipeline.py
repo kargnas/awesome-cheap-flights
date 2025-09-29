@@ -83,6 +83,7 @@ class ItineraryRow:
     return_is_best: bool
     total_price: Optional[int]
     currency: str
+    round_trip_price: Optional[int]
 
 
 def standardize_time(raw: str, year_hint: int) -> str:
@@ -226,6 +227,74 @@ def fetch_leg_html(
             return ""
 
 
+def fetch_round_trip_price(
+    *,
+    config: SearchConfig,
+    origin_code: str,
+    destination_code: str,
+    departure_date: str,
+    return_date: str,
+    max_stops: int,
+) -> Optional[int]:
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, config.max_retries + 1):
+        try:
+            flight_data = [
+                FlightData(
+                    date=departure_date,
+                    from_airport=origin_code,
+                    to_airport=destination_code,
+                ),
+                FlightData(
+                    date=return_date,
+                    from_airport=destination_code,
+                    to_airport=origin_code,
+                ),
+            ]
+            filter_payload = TFSData.from_interface(
+                flight_data=flight_data,
+                trip="round-trip",
+                passengers=Passengers(adults=config.passenger_count),
+                seat="economy",
+                max_stops=max_stops,
+            )
+            result = get_flights_from_filter(
+                filter_payload,
+                currency=config.currency_code,
+                mode="common",
+            )
+            best_price: Optional[int] = None
+            for flight in result.flights:
+                price_value = parse_price_to_int(flight.price)
+                if price_value is None:
+                    continue
+                if best_price is None or price_value < best_price:
+                    best_price = price_value
+            return best_price
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            wait_time = config.request_delay * attempt
+            print(
+                (
+                    f"Round-trip lookup {origin_code}->{destination_code} "
+                    f"({departure_date}/{return_date}) attempt {attempt} failed: {exc}"
+                ),
+                file=sys.stderr,
+            )
+            if attempt < config.max_retries:
+                time.sleep(wait_time)
+    if last_exc:
+        print(
+            (
+                f"Skip round-trip {origin_code}->{destination_code} "
+                f"({departure_date}/{return_date}) after {config.max_retries} failures"
+            ),
+            file=sys.stderr,
+        )
+        print(f"Last round-trip error: {last_exc}", file=sys.stderr)
+    return None
+
+
 def fetch_leg_flights(
     *,
     config: SearchConfig,
@@ -340,6 +409,15 @@ def build_itineraries(
         departure_date=return_date,
         max_stops=config.max_stops,
     )
+    time.sleep(config.request_delay)
+    round_trip_price = fetch_round_trip_price(
+        config=config,
+        origin_code=origin_code,
+        destination_code=destination["iata"],
+        departure_date=departure_date,
+        return_date=return_date,
+        max_stops=config.max_stops,
+    )
 
     if not outbound_flights or not return_flights:
         print(
@@ -378,8 +456,22 @@ def build_itineraries(
                     return_is_best=inbound.is_best,
                     total_price=total_price,
                     currency=config.currency_code,
+                    round_trip_price=None,
                 )
             )
+    if rows and round_trip_price is not None:
+        best_index: Optional[int] = None
+        best_value: Optional[int] = None
+        for idx, row in enumerate(rows):
+            if row.total_price is None:
+                continue
+            if best_value is None or row.total_price < best_value:
+                best_index = idx
+                best_value = row.total_price
+        if best_index is None:
+            best_index = 0
+        rows[best_index].round_trip_price = round_trip_price
+
     return rows
 
 

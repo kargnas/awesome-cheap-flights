@@ -113,6 +113,7 @@ Each row contains these fields:
 - `outbound_price`, `return_price`: per-leg integer fares (digits only).
 - `total_price`: summed outbound + return integers when both legs expose fares, otherwise blank.
 - `currency`: ISO code from config/CLI (defaults to `USD`).
+- `round_trip_price`: lowest bundled fare from a Google Flights round-trip search.
 
 ## Project layout
 - `awesome_cheap_flights/cli.py`: CLI entry point used by the console script/uvx
@@ -191,6 +192,7 @@ passengers: 1
 - `outbound_price`, `return_price`: 편도 운임(숫자만).
 - `total_price`: 왕복 운임이 둘 다 있을 때 합계, 아니면 빈 칸.
 - `currency`: 설정/CLI에서 지정한 ISO 코드(기본 `USD`).
+- `round_trip_price`: 구글 왕복 검색에서 가져온 최저 번들 운임.
 
 ### 프로젝트 구성
 - `awesome_cheap_flights/cli.py`: 콘솔 스크립트와 uvx에서 사용하는 진입점.
@@ -267,6 +269,7 @@ passengers: 1
 - `outbound_price`、`return_price`：各航段票价（仅数字）。
 - `total_price`：两段票价都存在时的合计，否则留空。
 - `currency`：配置/CLI 指定的 ISO 代码（默认 `USD`）。
+- `round_trip_price`：Google 航班的往返查询返回的最低捆绑票价。
 
 ### 项目结构
 - `awesome_cheap_flights/cli.py`：控制台脚本与 uvx 的入口。
@@ -344,6 +347,7 @@ passengers: 1
 - `outbound_price`、`return_price`: 各区間の運賃（数字のみ）。
 - `total_price`: 往復どちらも運賃が取得できた場合の合計、なければ空欄。
 - `currency`: 設定や CLI で指定した ISO コード（デフォルトは `USD`）。
+- `round_trip_price`: Google Flights の往復検索で得た最安バンドル運賃。
 
 ### プロジェクト構成
 - `awesome_cheap_flights/cli.py`: コンソールスクリプトと uvx のエントリーポイント。
