@@ -17,6 +17,7 @@ DEFAULT_MAX_LEG_RESULTS = 10
 DEFAULT_CURRENCY = "USD"
 DEFAULT_PASSENGERS = 1
 DEFAULT_MAX_STOPS = 2
+DEFAULT_CONCURRENCY = 1
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
 COMMENT_MARKERS = ("#",)
@@ -237,6 +238,24 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     if max_stops < 0 or max_stops > 2:
         raise ValueError("Max stops must be between 0 and 2")
 
+    proxy_value = config_data.get("http_proxy")
+    if args.http_proxy:
+        proxy_value = args.http_proxy
+    http_proxy = strip_comment(proxy_value) if proxy_value else None
+
+    concurrency_value = config_data.get("concurrency", DEFAULT_CONCURRENCY)
+    if args.concurrency is not None:
+        concurrency_value = args.concurrency
+    concurrency_raw = strip_comment(concurrency_value)
+    if concurrency_raw == "":
+        raise ValueError("Concurrency must be provided")
+    try:
+        concurrency = int(concurrency_raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid concurrency: {concurrency_value}") from exc
+    if concurrency < 1:
+        raise ValueError("Concurrency must be at least 1")
+
     return SearchConfig(
         origins=departures,
         destinations=destinations,
@@ -248,6 +267,8 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         currency_code=currency_value,
         passenger_count=passenger_count,
         max_stops=max_stops,
+        http_proxy=http_proxy,
+        concurrency=concurrency,
     )
 
 
@@ -289,6 +310,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--max-stops",
         type=int,
         help="Maximum stops per leg (0=nonstop, 1=one stop, 2=two stops)",
+    )
+    parser.add_argument(
+        "--http-proxy",
+        help="HTTP(S) proxy URL to route requests through",
+    )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        help="Number of itinerary combinations to process in parallel",
     )
     return parser.parse_args(argv)
 

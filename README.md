@@ -88,6 +88,8 @@ uv run python -m awesome_cheap_flights.cli \
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
 - Omit `output_path` and the CLI will fall back to `output/<local timestamp>_<TZ>.csv`.
+- Set `http_proxy` (or `--http-proxy`) when you need to route outbound requests through a proxy.
+- Tune `concurrency` (or `--concurrency`) to control how many itinerary pairs run in parallel (default: 1).
 - Set `passengers` to the number of adult seats you want to request (default: 1).
 - Use `max_stops` to cap connections per leg (0=nonstop, 1=one stop, 2=two stops).
 
@@ -171,6 +173,8 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 프로젝트 루트의 `config.yaml`이 자동으로 로드되며, 없으면 `--config`나 `AWESOME_CHEAP_FLIGHTS_CONFIG` 환경 변수를 사용한다.
 - `passengers`에 원하는 성인 좌석 수를 넣으면 된다(기본 1명).
 - `max_stops`로 허용 경유 횟수를 제한하라(0=논스탑, 1=한 번, 2=두 번).
+- `output_path`를 비워두면 `output/<로컬타임스탬프>_<TZ>.csv` 파일명이 자동으로 생성된다.
+- 프록시가 필요하면 `http_proxy`(또는 `--http-proxy`)를 설정하고, 병렬 처리 개수는 `concurrency`(또는 `--concurrency`)로 조정한다.
 
 ### YAML 예시
 ```yaml
@@ -248,6 +252,8 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 项目根目录的 `config.yaml` 会自动载入；若不存在，可使用 `--config` 或环境变量 `AWESOME_CHEAP_FLIGHTS_CONFIG`。
 - 将 `passengers` 设置为所需成人人数（默认 1）。
 - 用 `max_stops` 限制每段允许的经停次数（0=直飞，1=一段经停，2=两段经停）。
+- 省略 `output_path` 时会自动生成 `output/<本地时间戳>_<时区>.csv` 文件名。
+- 需要代理时可设置 `http_proxy`（或 `--http-proxy`），并用 `concurrency`（或 `--concurrency`）控制并行任务数量。
 
 ### YAML 示例
 ```yaml
@@ -326,6 +332,8 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - プロジェクト直下の `config.yaml` が自動で読み込まれる。存在しない場合は `--config` か `AWESOME_CHEAP_FLIGHTS_CONFIG` 環境変数を利用する。
 - `passengers` に希望する大人人数を設定する（既定値 1）。
 - `max_stops` で各区間の経由回数を制限する（0=直行、1=1回、2=2回）。
+- `output_path` を省略すると `output/<ローカルタイムスタンプ>_<TZ>.csv` が自動生成される。
+- プロキシが必要なら `http_proxy`（または `--http-proxy`）を設定し、併行実行数は `concurrency`（または `--concurrency`）で調整する。
 
 ### YAML サンプル
 ```yaml

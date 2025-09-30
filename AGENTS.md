@@ -57,6 +57,8 @@
 - Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops).
 - Legacy `departure`/`return` itinerary keys are removed; only `outbound`/`inbound` are valid now.
 - If neither CLI nor YAML sets an output path, the run writes to `output/<local timestamp>_<TZ>.csv`.
+- HTTP proxy support is available via `http_proxy` (YAML) or `--http-proxy`.
+- Parallelism is controlled via `concurrency` (YAML) or `--concurrency`; default is 1.
 
 ## Release / Publishing
 - `scripts/bump_version.py --level {patch|minor|current}` updates `pyproject.toml` and writes the new version to stdout (and optional file). Use `current` to reuse the existing version.

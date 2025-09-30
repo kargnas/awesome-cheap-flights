@@ -1,15 +1,19 @@
 import csv
+import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from fast_flights import FlightData, Passengers, Result
-from fast_flights.core import fetch as core_fetch, get_flights_from_filter
-from fast_flights.fallback_playwright import fallback_playwright_fetch
+from fast_flights.core import parse_response
+from fast_flights.fallback_playwright import CODE as PLAYWRIGHT_FALLBACK_CODE
 from fast_flights.flights_impl import TFSData
+from fast_flights.primp import Client
 from selectolax.lexbor import LexborHTMLParser
 
 from rich import box
@@ -48,6 +52,7 @@ class ProgressReporter:
         self._progress: Optional[Progress] = None
         self._start = time.perf_counter()
         self._config = config
+        self._lock = Lock()
 
     def __enter__(self) -> "ProgressReporter":
         if self.total_steps > 0 and console.is_terminal:
@@ -73,42 +78,46 @@ class ProgressReporter:
         self._render_summary()
 
     def record_success(self, label: str, rows_added: int) -> None:
-        self.processed += 1
-        self.rows_collected += rows_added
-        message = f"+{rows_added} rows"
-        total_note = f"total {self.rows_collected}"
-        log_line = f"[green]{label}[/] {message} {total_note}"
-        if self._progress is not None and self._task_id is not None:
-            self._progress.update(self._task_id, advance=1, description=label)
-            self._progress.log(log_line)
-        else:
-            console.log(log_line)
+        with self._lock:
+            self.processed += 1
+            self.rows_collected += rows_added
+            message = f"+{rows_added} rows"
+            total_note = f"total {self.rows_collected}"
+            log_line = f"[green]{label}[/] {message} {total_note}"
+            if self._progress is not None and self._task_id is not None:
+                self._progress.update(self._task_id, advance=1, description=label)
+                self._progress.log(log_line)
+            else:
+                console.log(log_line)
 
     def record_skip(self, label: str, reason: str) -> None:
-        self.processed += 1
-        self.skipped += 1
-        note = reason if reason.endswith(".") else f"{reason}."
-        total_note = f"total {self.rows_collected}"
-        log_line = f"[yellow]{label}[/] {note} {total_note}"
-        if self._progress is not None and self._task_id is not None:
-            self._progress.update(self._task_id, advance=1, description=label)
-            self._progress.log(log_line)
-        else:
-            console.log(log_line)
+        with self._lock:
+            self.processed += 1
+            self.skipped += 1
+            note = reason if reason.endswith(".") else f"{reason}."
+            total_note = f"total {self.rows_collected}"
+            log_line = f"[yellow]{label}[/] {note} {total_note}"
+            if self._progress is not None and self._task_id is not None:
+                self._progress.update(self._task_id, advance=1, description=label)
+                self._progress.log(log_line)
+            else:
+                console.log(log_line)
 
     def log_warning(self, message: str) -> None:
         text = message if message.endswith(".") else f"{message}."
-        if self._progress is not None:
-            self._progress.log(f"[yellow]{text}")
-        else:
-            console.log(f"[yellow]{text}")
+        with self._lock:
+            if self._progress is not None:
+                self._progress.log(f"[yellow]{text}")
+            else:
+                console.log(f"[yellow]{text}")
 
     def log_error(self, message: str) -> None:
         text = message if message.endswith(".") else f"{message}."
-        if self._progress is not None:
-            self._progress.log(f"[red]{text}")
-        else:
-            console.log(f"[red]{text}")
+        with self._lock:
+            if self._progress is not None:
+                self._progress.log(f"[red]{text}")
+            else:
+                console.log(f"[red]{text}")
 
     def _render_summary(self) -> None:
         elapsed_minutes = (time.perf_counter() - self._start) / 60 or 0.0
@@ -142,6 +151,8 @@ class ProgressReporter:
         table.add_row("Max leg results", str(self._config.max_leg_results))
         table.add_row("Request delay", f"{self._config.request_delay:.2f}s")
         table.add_row("Retry limit", str(self._config.max_retries))
+        table.add_row("Concurrency", str(self._config.concurrency))
+        table.add_row("HTTP proxy", self._config.http_proxy or "-")
         table.add_row("Total itineraries", str(total_pairs))
         console.print(table)
 
@@ -161,6 +172,80 @@ def _error(message: str, reporter: Optional[ProgressReporter] = None) -> None:
         text = message if message.endswith(".") else f"{message}."
         console.log(f"[red]{text}")
 
+
+def _core_fetch(params: Dict[str, str], proxy: Optional[str]) -> object:
+    client = Client(impersonate="chrome_126", verify=False, proxy=proxy)
+    res = client.get("https://www.google.com/travel/flights", params=params)
+    assert res.status_code == 200, f"{res.status_code} Result: {res.text_markdown}"
+    return res
+
+
+def _fallback_fetch(params: Dict[str, str], proxy: Optional[str]) -> object:
+    client = Client(impersonate="chrome_100", verify=False, proxy=proxy)
+    res = client.post(
+        "https://try.playwright.tech/service/control/run",
+        json={
+            "code": PLAYWRIGHT_FALLBACK_CODE
+            % (
+                "https://www.google.com/travel/flights"
+                + "?"
+                + "&".join(f"{k}={v}" for k, v in params.items())
+            ),
+            "language": "python",
+        },
+    )
+    assert res.status_code == 200, f"{res.status_code} Result: {res.text_markdown}"
+
+    class DummyResponse:
+        status_code = 200
+        text = json.loads(res.text)["output"]
+        text_markdown = text
+
+    return DummyResponse
+
+
+def _get_flights_from_filter(
+    filter_payload: TFSData,
+    *,
+    currency: str,
+    mode: str = "common",
+    proxy: Optional[str] = None,
+) -> Result:
+    data = filter_payload.as_b64()
+    params = {
+        "tfs": data.decode("utf-8"),
+        "hl": "en",
+        "tfu": "EgQIABABIgA",
+        "curr": currency,
+    }
+
+    def resolve(mode_value: str) -> object:
+        if mode_value in {"common", "fallback"}:
+            try:
+                return _core_fetch(params, proxy)
+            except AssertionError as exc:
+                if mode_value == "fallback":
+                    return _fallback_fetch(params, proxy)
+                raise exc
+        if mode_value == "local":
+            from fast_flights.local_playwright import local_playwright_fetch
+
+            return local_playwright_fetch(params)
+        return _fallback_fetch(params, proxy)
+
+    response = resolve(mode)
+    try:
+        return parse_response(response)
+    except RuntimeError as exc:
+        if mode == "fallback":
+            return _get_flights_from_filter(
+                filter_payload,
+                currency=currency,
+                mode="force-fallback",
+                proxy=proxy,
+            )
+        raise exc
+
 @dataclass
 class SearchConfig:
     origins: Dict[str, str]
@@ -173,6 +258,8 @@ class SearchConfig:
     currency_code: str = "USD"
     passenger_count: int = 1
     max_stops: int = 2
+    http_proxy: Optional[str] = None
+    concurrency: int = 1
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
@@ -189,6 +276,12 @@ class SearchConfig:
             raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
         if self.max_stops < 0 or self.max_stops > 2:
             raise ValueError("Max stops must be between 0 and 2")
+        try:
+            self.concurrency = int(self.concurrency)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid concurrency: {self.concurrency}") from exc
+        if self.concurrency < 1:
+            raise ValueError("Concurrency must be at least 1")
 
 
 @dataclass
@@ -340,6 +433,7 @@ def fetch_leg_html(
     max_stops: int,
     passenger_count: int,
     currency_code: str,
+    proxy: Optional[str],
 ) -> str:
     flight_data = build_flight_data(origin_code, destination_code, departure_date)
     filter_payload = TFSData.from_interface(
@@ -356,11 +450,11 @@ def fetch_leg_html(
         "curr": currency_code,
     }
     try:
-        response = core_fetch(params)
+        response = _core_fetch(params, proxy)
         return response.text
     except AssertionError:
         try:
-            response = fallback_playwright_fetch(params)
+            response = _fallback_fetch(params, proxy)
             return response.text
         except Exception:  # noqa: BLE001
             return ""
@@ -398,10 +492,11 @@ def fetch_round_trip_price(
                 seat="economy",
                 max_stops=max_stops,
             )
-            result = get_flights_from_filter(
+            result = _get_flights_from_filter(
                 filter_payload,
                 currency=config.currency_code,
                 mode="common",
+                proxy=config.http_proxy,
             )
             best_price: Optional[int] = None
             for flight in result.flights:
@@ -458,10 +553,11 @@ def fetch_leg_flights(
                 seat="economy",
                 max_stops=max_stops,
             )
-            result = get_flights_from_filter(
+            result = _get_flights_from_filter(
                 filter_payload,
                 currency=config.currency_code,
                 mode="common",
+                proxy=config.http_proxy,
             )
             html = fetch_leg_html(
                 origin_code=origin_code,
@@ -470,6 +566,7 @@ def fetch_leg_flights(
                 max_stops=max_stops,
                 passenger_count=config.passenger_count,
                 currency_code=config.currency_code,
+                proxy=config.http_proxy,
             )
             if html:
                 layover_lookup = parse_layover_details(html)
@@ -638,36 +735,62 @@ def write_csv(rows: Sequence[ItineraryRow], output_path: Path) -> None:
 
 def run_search(config: SearchConfig) -> List[ItineraryRow]:
     all_rows: List[ItineraryRow] = []
-    total_steps = (
-        len(config.origins) * len(config.destinations) * len(config.itineraries)
-    )
+    tasks: List[Tuple[str, str, Dict[str, str], str, str, str]] = []
+    for origin_name, origin_code in config.origins.items():
+        origin_label = origin_name or origin_code
+        for destination in config.destinations:
+            destination_city = destination.get("city") or destination.get("iata", "?")
+            destination_label = f"{destination_city} ({destination.get('iata', '?')})"
+            for departure_date, return_date in config.itineraries:
+                label = (
+                    f"{origin_label} ({origin_code}) → {destination_label} "
+                    f"{departure_date}/{return_date} · {config.passenger_count} pax · "
+                    f"{config.currency_code}"
+                )
+                tasks.append((origin_code, origin_label, destination, departure_date, return_date, label))
+
+    total_steps = len(tasks)
     with ProgressReporter(total_steps, config=config) as reporter:
-        for origin_name, origin_code in config.origins.items():
-            origin_label = origin_name or origin_code
-            for destination in config.destinations:
-                destination_city = destination.get("city") or destination.get("iata", "?")
-                destination_label = f"{destination_city} ({destination.get('iata', '?')})"
-                for departure_date, return_date in config.itineraries:
-                    label = (
-                        f"{origin_label} ({origin_code}) → {destination_label} "
-                        f"{departure_date}/{return_date} · {config.passenger_count} pax · "
-                        f"{config.currency_code}"
-                    )
-                    rows = build_itineraries(
-                        config=config,
-                        origin_code=origin_code,
-                        destination=destination,
-                        departure_date=departure_date,
-                        return_date=return_date,
-                        reporter=reporter,
-                    )
+        if config.concurrency <= 1:
+            for origin_code, _, destination, departure_date, return_date, label in tasks:
+                rows = build_itineraries(
+                    config=config,
+                    origin_code=origin_code,
+                    destination=destination,
+                    departure_date=departure_date,
+                    return_date=return_date,
+                    reporter=reporter,
+                )
+                added = len(rows)
+                all_rows.extend(rows)
+                if added > 0:
+                    reporter.record_success(label, added)
+                else:
+                    reporter.record_skip(label, "Empty leg")
+                time.sleep(config.request_delay)
+        else:
+            def process_task(task: Tuple[str, str, Dict[str, str], str, str, str]) -> Tuple[str, List[ItineraryRow]]:
+                origin_code, _, destination, departure_date, return_date, label = task
+                rows = build_itineraries(
+                    config=config,
+                    origin_code=origin_code,
+                    destination=destination,
+                    departure_date=departure_date,
+                    return_date=return_date,
+                    reporter=None,
+                )
+                return label, rows
+
+            with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+                futures = {executor.submit(process_task, task): task for task in tasks}
+                for future in as_completed(futures):
+                    label, rows = future.result()
                     added = len(rows)
                     all_rows.extend(rows)
                     if added > 0:
                         reporter.record_success(label, added)
                     else:
                         reporter.record_skip(label, "Empty leg")
-                    time.sleep(config.request_delay)
     return all_rows
 
 
