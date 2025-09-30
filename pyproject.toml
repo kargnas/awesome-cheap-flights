@@ -8,7 +8,7 @@ dependencies = [
     "fast-flights>=2.2",
     "json5>=0.12.1",
     "pyyaml>=6.0.3",
-    "typing-extensions>=4.15.0",
+    "rich>=13.7",
 ]
 
 authors = [{ name = "Awesome Cheap Flights Maintainers" }]

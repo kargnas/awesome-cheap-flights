@@ -1,6 +1,5 @@
 import csv
 import re
-import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
@@ -13,6 +12,19 @@ from fast_flights.fallback_playwright import fallback_playwright_fetch
 from fast_flights.flights_impl import TFSData
 from selectolax.lexbor import LexborHTMLParser
 
+from rich import box
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
+from rich.table import Table
+
 TIME_PATTERN = re.compile(
     r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<ampm>AM|PM)\s*on\s*"
     r"(?P<weekday>[A-Za-z]{3}),\s*(?P<month>[A-Za-z]{3})\s*(?P<day>\d{1,2})"
@@ -21,6 +33,133 @@ TIME_PATTERN = re.compile(
 
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
+
+
+console = Console(stderr=True, highlight=False)
+
+
+class ProgressReporter:
+    def __init__(self, total_steps: int, *, config: Optional["SearchConfig"] = None) -> None:
+        self.total_steps = total_steps
+        self.rows_collected = 0
+        self.processed = 0
+        self.skipped = 0
+        self._task_id: Optional[int] = None
+        self._progress: Optional[Progress] = None
+        self._start = time.perf_counter()
+        self._config = config
+
+    def __enter__(self) -> "ProgressReporter":
+        if self.total_steps > 0 and console.is_terminal:
+            self._progress = Progress(
+                SpinnerColumn(),
+                TextColumn("{task.description}"),
+                BarColumn(bar_width=None),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+                console=console,
+                redirect_stdout=False,
+                redirect_stderr=False,
+            )
+            self._progress.__enter__()
+            self._task_id = self._progress.add_task("Preparing", total=self.total_steps)
+        self._render_overview()
+        return self
+
+    def __exit__(self, exc_type, exc, exc_tb) -> None:
+        if self._progress is not None:
+            self._progress.__exit__(exc_type, exc, exc_tb)
+        self._render_summary()
+
+    def record_success(self, label: str, rows_added: int) -> None:
+        self.processed += 1
+        self.rows_collected += rows_added
+        message = f"+{rows_added} rows"
+        total_note = f"total {self.rows_collected}"
+        log_line = f"[green]{label}[/] {message} {total_note}"
+        if self._progress is not None and self._task_id is not None:
+            self._progress.update(self._task_id, advance=1, description=label)
+            self._progress.log(log_line)
+        else:
+            console.log(log_line)
+
+    def record_skip(self, label: str, reason: str) -> None:
+        self.processed += 1
+        self.skipped += 1
+        note = reason if reason.endswith(".") else f"{reason}."
+        total_note = f"total {self.rows_collected}"
+        log_line = f"[yellow]{label}[/] {note} {total_note}"
+        if self._progress is not None and self._task_id is not None:
+            self._progress.update(self._task_id, advance=1, description=label)
+            self._progress.log(log_line)
+        else:
+            console.log(log_line)
+
+    def log_warning(self, message: str) -> None:
+        text = message if message.endswith(".") else f"{message}."
+        if self._progress is not None:
+            self._progress.log(f"[yellow]{text}")
+        else:
+            console.log(f"[yellow]{text}")
+
+    def log_error(self, message: str) -> None:
+        text = message if message.endswith(".") else f"{message}."
+        if self._progress is not None:
+            self._progress.log(f"[red]{text}")
+        else:
+            console.log(f"[red]{text}")
+
+    def _render_summary(self) -> None:
+        elapsed_minutes = (time.perf_counter() - self._start) / 60 or 0.0
+        table = Table(title="Flight Capture Summary", box=box.SIMPLE_HEAD)
+        table.add_column("Metric", justify="left")
+        table.add_column("Value", justify="right")
+        table.add_row("Itineraries processed", str(self.processed))
+        table.add_row("Itineraries skipped", str(self.skipped))
+        table.add_row("Rows collected", str(self.rows_collected))
+        table.add_row("Elapsed minutes", f"{elapsed_minutes:.2f}")
+        console.print(table)
+
+    def _render_overview(self) -> None:
+        if self._config is None:
+            return
+        origins = ", ".join(sorted(self._config.origins.values())) or "-"
+        destinations = ", ".join(dest.get("iata", "?") for dest in self._config.destinations) or "-"
+        total_pairs = (
+            len(self._config.origins)
+            * len(self._config.destinations)
+            * len(self._config.itineraries)
+        )
+        table = Table(title="Search Overview", box=box.SIMPLE_HEAD)
+        table.add_column("Field", justify="left")
+        table.add_column("Value", justify="right")
+        table.add_row("Origins", origins)
+        table.add_row("Destinations", destinations)
+        table.add_row("Passengers", str(self._config.passenger_count))
+        table.add_row("Currency", self._config.currency_code)
+        table.add_row("Max stops", str(self._config.max_stops))
+        table.add_row("Max leg results", str(self._config.max_leg_results))
+        table.add_row("Request delay", f"{self._config.request_delay:.2f}s")
+        table.add_row("Retry limit", str(self._config.max_retries))
+        table.add_row("Total itineraries", str(total_pairs))
+        console.print(table)
+
+
+def _warn(message: str, reporter: Optional[ProgressReporter] = None) -> None:
+    if reporter is not None:
+        reporter.log_warning(message)
+    else:
+        text = message if message.endswith(".") else f"{message}."
+        console.log(f"[yellow]{text}")
+
+
+def _error(message: str, reporter: Optional[ProgressReporter] = None) -> None:
+    if reporter is not None:
+        reporter.log_error(message)
+    else:
+        text = message if message.endswith(".") else f"{message}."
+        console.log(f"[red]{text}")
 
 @dataclass
 class SearchConfig:
@@ -235,6 +374,7 @@ def fetch_round_trip_price(
     departure_date: str,
     return_date: str,
     max_stops: int,
+    reporter: Optional[ProgressReporter] = None,
 ) -> Optional[int]:
     last_exc: Optional[Exception] = None
     for attempt in range(1, config.max_retries + 1):
@@ -274,24 +414,24 @@ def fetch_round_trip_price(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             wait_time = config.request_delay * attempt
-            print(
+            _warn(
                 (
-                    f"Round-trip lookup {origin_code}->{destination_code} "
-                    f"({departure_date}/{return_date}) attempt {attempt} failed: {exc}"
+                    f"Round-trip fail {origin_code}->{destination_code} "
+                    f"{departure_date}/{return_date} try {attempt}: {exc}"
                 ),
-                file=sys.stderr,
+                reporter,
             )
             if attempt < config.max_retries:
                 time.sleep(wait_time)
     if last_exc:
-        print(
+        _warn(
             (
-                f"Skip round-trip {origin_code}->{destination_code} "
-                f"({departure_date}/{return_date}) after {config.max_retries} failures"
+                f"Round-trip skip {origin_code}->{destination_code} "
+                f"{departure_date}/{return_date} after {config.max_retries} tries"
             ),
-            file=sys.stderr,
+            reporter,
         )
-        print(f"Last round-trip error: {last_exc}", file=sys.stderr)
+        _error(f"Round-trip last error: {last_exc}", reporter)
     return None
 
 
@@ -302,6 +442,7 @@ def fetch_leg_flights(
     destination_code: str,
     departure_date: str,
     max_stops: int,
+    reporter: Optional[ProgressReporter] = None,
 ) -> List[LegFlight]:
     last_exc: Optional[Exception] = None
     result: Optional[Result] = None
@@ -336,23 +477,26 @@ def fetch_leg_flights(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             wait_time = config.request_delay * attempt
-            print(
+            _warn(
                 (
-                    f"Error for {origin_code}->{destination_code} "
-                    f"({departure_date}) on attempt {attempt}: {exc}"
+                    f"Leg fail {origin_code}->{destination_code} "
+                    f"{departure_date} try {attempt}: {exc}"
                 ),
-                file=sys.stderr,
+                reporter,
             )
             if attempt < config.max_retries:
                 time.sleep(wait_time)
 
     if result is None:
         if last_exc:
-            print(
-                f"Skip {origin_code}->{destination_code} ({departure_date}) after {config.max_retries} failures",
-                file=sys.stderr,
+            _warn(
+                (
+                    f"Leg skip {origin_code}->{destination_code} "
+                    f"{departure_date} after {config.max_retries} tries"
+                ),
+                reporter,
             )
-            print(f"Last error: {last_exc}", file=sys.stderr)
+            _error(f"Leg last error: {last_exc}", reporter)
         return []
 
     flights: List[LegFlight] = []
@@ -393,6 +537,7 @@ def build_itineraries(
     destination: Dict[str, str],
     departure_date: str,
     return_date: str,
+    reporter: Optional[ProgressReporter] = None,
 ) -> List[ItineraryRow]:
     outbound_flights = fetch_leg_flights(
         config=config,
@@ -400,6 +545,7 @@ def build_itineraries(
         destination_code=destination["iata"],
         departure_date=departure_date,
         max_stops=config.max_stops,
+        reporter=reporter,
     )
     time.sleep(config.request_delay)
     return_flights = fetch_leg_flights(
@@ -408,6 +554,7 @@ def build_itineraries(
         destination_code=origin_code,
         departure_date=return_date,
         max_stops=config.max_stops,
+        reporter=reporter,
     )
     time.sleep(config.request_delay)
     round_trip_price = fetch_round_trip_price(
@@ -417,15 +564,16 @@ def build_itineraries(
         departure_date=departure_date,
         return_date=return_date,
         max_stops=config.max_stops,
+        reporter=reporter,
     )
 
     if not outbound_flights or not return_flights:
-        print(
+        _warn(
             (
-                f"Skip itinerary {origin_code}->{destination['iata']} "
-                f"({departure_date}/{return_date}) due to empty leg"
+                f"Itinerary skip {origin_code}->{destination['iata']} "
+                f"{departure_date}/{return_date}: empty leg"
             ),
-            file=sys.stderr,
+            reporter,
         )
         return []
 
@@ -477,7 +625,7 @@ def build_itineraries(
 
 def write_csv(rows: Sequence[ItineraryRow], output_path: Path) -> None:
     if not rows:
-        print("No flight data available to write.", file=sys.stderr)
+        _warn("No flight data available to write")
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as csvfile:
@@ -490,32 +638,47 @@ def write_csv(rows: Sequence[ItineraryRow], output_path: Path) -> None:
 
 def run_search(config: SearchConfig) -> List[ItineraryRow]:
     all_rows: List[ItineraryRow] = []
-    for _, origin_code in config.origins.items():
-        for destination in config.destinations:
-            for departure_date, return_date in config.itineraries:
-                print(
-                    f"Processing {origin_code}->{destination['iata']} for {departure_date} / {return_date}",
-                    file=sys.stderr,
-                )
-                rows = build_itineraries(
-                    config=config,
-                    origin_code=origin_code,
-                    destination=destination,
-                    departure_date=departure_date,
-                    return_date=return_date,
-                )
-                all_rows.extend(rows)
-                time.sleep(config.request_delay)
+    total_steps = (
+        len(config.origins) * len(config.destinations) * len(config.itineraries)
+    )
+    with ProgressReporter(total_steps, config=config) as reporter:
+        for origin_name, origin_code in config.origins.items():
+            origin_label = origin_name or origin_code
+            for destination in config.destinations:
+                destination_city = destination.get("city") or destination.get("iata", "?")
+                destination_label = f"{destination_city} ({destination.get('iata', '?')})"
+                for departure_date, return_date in config.itineraries:
+                    label = (
+                        f"{origin_label} ({origin_code}) → {destination_label} "
+                        f"{departure_date}/{return_date} · {config.passenger_count} pax · "
+                        f"{config.currency_code}"
+                    )
+                    rows = build_itineraries(
+                        config=config,
+                        origin_code=origin_code,
+                        destination=destination,
+                        departure_date=departure_date,
+                        return_date=return_date,
+                        reporter=reporter,
+                    )
+                    added = len(rows)
+                    all_rows.extend(rows)
+                    if added > 0:
+                        reporter.record_success(label, added)
+                    else:
+                        reporter.record_skip(label, "Empty leg")
+                    time.sleep(config.request_delay)
     return all_rows
 
 
 def execute_search(config: SearchConfig) -> List[ItineraryRow]:
     rows = run_search(config)
     if not rows:
-        print("No flights captured.", file=sys.stderr)
+        _warn("No flights captured")
         return rows
     write_csv(rows, config.output_path)
-    print(f"Saved {len(rows)} rows to {config.output_path}")
+    console.log(f"[green]Saved {len(rows)} rows.[/]")
+    console.log(f"[green]Output path: {config.output_path}.")
     return rows
 
 

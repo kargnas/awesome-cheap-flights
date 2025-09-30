@@ -71,12 +71,23 @@ uv run python -m awesome_cheap_flights.cli \
 - Update `config.yaml` to tweak departures, destinations, or itineraries.
 - Need a clean cache? Set `UV_CACHE_DIR=$(pwd)/.cache/uv` before the command.
 - Generated CSV lands at `output/dev.csv`; sort by `total_price` after runs.
+- When using the CLI, supply multiple departure airports with `--departure ICN,GMP` (or repeat the flag).
+- Skip `--output` to let the tool save into `output/YYYYMMDD_HHMMSS_<TZ>.csv` (local clock with timezone code).
+
+### Visual logging
+- Interactive terminals now render a Rich progress bar that tracks itinerary combos and cumulative rows captured.
+- Each processed pair logs added rows so you can gauge coverage without opening the CSV.
+- Non-interactive environments emit concise stderr lines with the same counts, keeping CI transcripts readable.
+- Warning and error notes are color coded when supported, matching the progress summary table at the end of each run.
+- Progress labels show origin/destination, passenger count, and currency so every line carries the full search context.
 
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
 - CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, `currency`, `passengers`, and `max_stops`.
+- Separate multiple destination airports with commas or by repeating the flag (for example, `--destination FUK,HND`).
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
+- Omit `output_path` and the CLI will fall back to `output/<local timestamp>_<TZ>.csv`.
 - Set `passengers` to the number of adult seats you want to request (default: 1).
 - Use `max_stops` to cap connections per leg (0=nonstop, 1=one stop, 2=two stops).
 
@@ -101,7 +112,7 @@ currency: USD
 max_stops: 2
 passengers: 1
 ```
-Each itinerary entry may contain `outbound`/`inbound` (preferred) or the legacy `departure`/`return`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
+Each itinerary entry must use `outbound`/`inbound`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
 
 ## Output format
 Each row contains these fields:
@@ -182,7 +193,7 @@ currency: USD
 max_stops: 2
 passengers: 1
 ```
-각 여정 항목은 `outbound`/`inbound`(권장) 또는 기존 `departure`/`return`을 사용할 수 있다. 각 필드는 문자열 날짜, 날짜 목록, `{start, end}` 범위를 허용하며 범위는 하루씩 확장되어 가능한 조합을 모두 검색한다.
+각 여정 항목은 반드시 `outbound`/`inbound`를 사용해야 한다. 각 필드는 문자열 날짜, 날짜 목록, `{start, end}` 범위를 허용하며 범위는 하루씩 확장되어 가능한 조합을 모두 검색한다.
 
 ### 출력 포맷
 - `origin_code`, `destination_code`: 검색된 구간의 IATA 코드.
@@ -259,7 +270,7 @@ currency: USD
 max_stops: 2
 passengers: 1
 ```
-每个行程可以使用 `outbound`/`inbound`（推荐）或旧版的 `departure`/`return`。各字段支持单个日期、日期列表或 `{start, end}` 范围；范围会按天展开，遍历所有组合。
+每个行程必须使用 `outbound`/`inbound`。各字段支持单个日期、日期列表或 `{start, end}` 范围；范围会按天展开，遍历所有组合。
 
 ### 输出格式
 - `origin_code`、`destination_code`：查询航段的 IATA 代码。
@@ -337,7 +348,7 @@ currency: USD
 max_stops: 2
 passengers: 1
 ```
-各行程は `outbound`/`inbound`（推奨）または旧式の `departure`/`return` を指定できる。フィールドには単一日付、日付リスト、`{start, end}` 範囲が使え、範囲は日単位で展開されて全組み合わせを検索する。
+各行程は必ず `outbound`/`inbound` を指定する。フィールドには単一日付、日付リスト、`{start, end}` 範囲が使え、範囲は日単位で展開されて全組み合わせを検索する。
 
 ### 出力フォーマット
 - `origin_code`、`destination_code`: 検索区間の IATA コード。
@@ -357,4 +368,4 @@ passengers: 1
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: 9871c231b221412f209baf85de6444043b677a2d
+Last commit id: da8db682d8ecb073ee15601073ca786efcbee654

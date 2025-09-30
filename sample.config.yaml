@@ -5,20 +5,24 @@ currency: USD
 # currency: CNY # Chinese Yuan
 
 departures:
-  - ICN  # Seoul Incheon
+  - ICN # Seoul Incheon
 
 destinations:
-  - FUK  # Fukuoka
+  - GMP # Fukuoka
+  - HKG # Hong Kong
 
 itineraries:
   - outbound:
       start: 2026-01-01
-      end: 2026-01-01
+      end: 2026-01-02
     inbound: 2026-01-04
+  - outbound: 2026-01-05
+    inbound: 2026-01-10
 
+# Optional: omit this key to default to output/<local timestamp>_<TZ>.csv
 output_path: output/sample.csv
 request_delay: 0.5
 max_retries: 1
 max_leg_results: 3
-max_stops: 2  # 0=nonstop, 1=one stop, 2=two stops
-passengers: 1  # Total adult passengers
+max_stops: 2 # 0=nonstop, 1=one stop, 2=two stops
+passengers: 1 # Total adult passengers

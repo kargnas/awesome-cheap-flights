@@ -20,6 +20,7 @@ DEFAULT_MAX_STOPS = 2
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
 COMMENT_MARKERS = ("#",)
+DEFAULT_OUTPUT_DIR = Path("output")
 
 
 def strip_comment(value: Any) -> str:
@@ -40,61 +41,45 @@ def load_yaml_config(path: Path) -> Dict[str, Any]:
     return data
 
 
-def normalize_departures(raw: Any) -> Dict[str, str]:
-    if raw is None:
-        return {}
-    if isinstance(raw, dict):
-        return {
-            strip_comment(name): strip_comment(code).upper()
-            for name, code in raw.items()
-            if strip_comment(name) and strip_comment(code)
-        }
+def _explode_tokens(value: str) -> List[str]:
+    return [token.strip() for token in value.split(",") if token.strip()]
 
-    items: Iterable[Any] = raw if isinstance(raw, (list, tuple)) else [raw]
-    result: Dict[str, str] = {}
-    for item in items:
-        if isinstance(item, str):
-            token = strip_comment(item)
-            if not token:
-                continue
-            if ":" in token:
-                name, code = (part.strip() for part in token.split(":", 1))
-            else:
-                name = code = token
-            if name and code:
-                result[name] = code.upper()
-        elif isinstance(item, dict):
-            for name, code in item.items():
-                name_token = strip_comment(name)
-                code_token = strip_comment(code)
-                if name_token and code_token:
-                    result[name_token] = code_token.upper()
-        else:
-            raise ValueError(f"Invalid departure entry: {item}")
-    return result
+
+def _collect_tokens(raw: Any, *, label: str) -> List[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return _explode_tokens(strip_comment(raw))
+    if isinstance(raw, (list, tuple)):
+        tokens: List[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                raise ValueError(f"{label} entries must be strings (found {item!r})")
+            tokens.extend(_explode_tokens(strip_comment(item)))
+        return tokens
+    raise ValueError(f"Unsupported {label} type: {type(raw).__name__}")
+
+
+def _normalize_codes(tokens: Iterable[str]) -> List[str]:
+    seen: set[str] = set()
+    ordered: List[str] = []
+    for token in tokens:
+        code = token.strip().upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        ordered.append(code)
+    return ordered
+
+
+def normalize_departures(raw: Any) -> Dict[str, str]:
+    codes = _normalize_codes(_collect_tokens(raw, label="departure"))
+    return {code: code for code in codes}
 
 
 def normalize_destinations(raw: Any) -> List[Dict[str, str]]:
-    if raw is None:
-        return []
-    items: Iterable[Any] = raw if isinstance(raw, (list, tuple)) else [raw]
-    destinations: List[Dict[str, str]] = []
-    for item in items:
-        if isinstance(item, str):
-            token = strip_comment(item)
-            if not token:
-                continue
-            destinations.append({"city": token, "country": "", "iata": token.upper()})
-        elif isinstance(item, dict):
-            city = strip_comment(item.get("city", item.get("iata", "")))
-            country = strip_comment(item.get("country", ""))
-            iata = strip_comment(item.get("iata", "")).upper()
-            if not city or not iata:
-                raise ValueError(f"Destination requires at least city/iata: {item}")
-            destinations.append({"city": city, "country": country, "iata": iata})
-        else:
-            raise ValueError(f"Invalid destination entry: {item}")
-    return destinations
+    codes = _normalize_codes(_collect_tokens(raw, label="destination"))
+    return [{"city": code, "country": "", "iata": code} for code in codes]
 
 
 def expand_dates(field: Any) -> List[str]:
@@ -155,12 +140,8 @@ def normalize_itineraries(raw: Any) -> List[Tuple[str, str]]:
         if isinstance(item, dict):
             outbound_field = item.get("outbound")
             inbound_field = item.get("inbound")
-            if outbound_field is None and "departure" in item:
-                outbound_field = item["departure"]
-            if inbound_field is None and "return" in item:
-                inbound_field = item["return"]
             if outbound_field is None or inbound_field is None:
-                raise ValueError("Itinerary dict requires 'outbound' and 'inbound' (or 'departure'/'return')")
+                raise ValueError("Itinerary dict requires 'outbound' and 'inbound'")
             outbound_options = expand_dates(outbound_field)
             inbound_options = expand_dates(inbound_field)
             if not outbound_options or not inbound_options:
@@ -209,12 +190,17 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     if not itineraries:
         raise ValueError("At least one itinerary must be provided")
 
-    output_path_value = config_data.get("output_path")
+    output_path: Path | None = None
     if args.output:
-        output_path_value = args.output
-    if not output_path_value:
-        raise ValueError("Output path must be supplied via --output or YAML 'output_path'")
-    output_path = Path(strip_comment(output_path_value))
+        output_path = Path(strip_comment(args.output))
+    elif config_data.get("output_path"):
+        output_path = Path(strip_comment(config_data["output_path"]))
+    if output_path is None:
+        local_time = datetime.now().astimezone()
+        tz_name = local_time.tzname() or local_time.strftime("UTC%z")
+        safe_tz = "".join(ch for ch in tz_name if ch.isalnum() or ch in {"+", "-"}) or "LOCAL"
+        timestamp = local_time.strftime("%Y%m%d_%H%M%S")
+        output_path = DEFAULT_OUTPUT_DIR / f"{timestamp}_{safe_tz}.csv"
 
     request_delay = float(config_data.get("request_delay", DEFAULT_REQUEST_DELAY))
     max_retries = int(config_data.get("max_retries", DEFAULT_MAX_RETRIES))
@@ -274,12 +260,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--departure",
         action="append",
-        help="Departure codes (repeatable). Accepts 'Name:CODE' or 'CODE'",
+        help="Departure codes (repeatable). Accepts comma-separated list",
     )
     parser.add_argument(
         "--destination",
         action="append",
-        help="Destination codes (repeatable). Accepts 'City:Country:CODE' or 'CODE'",
+        help="Destination codes (repeatable). Accepts comma-separated list",
     )
     parser.add_argument(
         "--itinerary",
