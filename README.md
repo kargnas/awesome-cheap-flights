@@ -16,7 +16,7 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a brow
 ```bash
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -26,7 +26,7 @@ uvx awesome-cheap-flights \
 ### Windows (PowerShell)
 ```powershell
 powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"
-uvx awesome-cheap-flights `
+uvx awesome-cheap-flights@latest@latest `
   --output sample.csv `
   --departure ICN `
   --destination FUK `
@@ -37,7 +37,7 @@ uvx awesome-cheap-flights `
 ```sh
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -49,7 +49,7 @@ pkg update
 pkg install curl python
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -62,6 +62,7 @@ Open the CSV and sort by `total_price` in your spreadsheet app.
 
 ### Troubleshooting
 - Missing typing_extensions means version below 0.1.7. Upgrade package.
+- Need verbose errors? Append `--debug` to show the provider response dump.
 
 ## Local dev run
 
@@ -95,6 +96,7 @@ uv run python -m awesome_cheap_flights.cli \
 - Tune `concurrency` (or `--concurrency`) to control how many itinerary pairs run in parallel (default: 1).
 - Set `passengers` to the number of adult seats you want to request (default: 1).
 - Use `max_stops` to cap connections per leg (0=nonstop, 1=one stop, 2=two stops).
+- Set `max_stops` to `null` or omit the key to search every stop.
 
 ### YAML sample
 ```yaml
@@ -114,7 +116,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
-max_stops: 2
+max_stops: 2 # Set to null or remove to search all stops
 passengers: 1
 ```
 Each itinerary entry must use `outbound`/`inbound`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
@@ -144,7 +146,7 @@ Push to `main` triggers the `release` workflow automatically with a patch bump, 
 1. uv가 없다면 아래 설치 표를 참고해 설치한다.
 2. 다음 명령을 실행한다:
 ```bash
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -176,6 +178,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 프로젝트 루트의 `config.yaml`이 자동으로 로드되며, 없으면 `--config`나 `AWESOME_CHEAP_FLIGHTS_CONFIG` 환경 변수를 사용한다.
 - `passengers`에 원하는 성인 좌석 수를 넣으면 된다(기본 1명).
 - `max_stops`로 허용 경유 횟수를 제한하라(0=논스탑, 1=한 번, 2=두 번).
+- `max_stops`를 `null`로 두거나 아예 빼면 모든 경유를 검색한다.
 - `output_path`를 비워두면 `output/<로컬타임스탬프>_<TZ>.csv` 파일명이 자동으로 생성된다.
 - 프록시가 필요하면 `http_proxy`(또는 `--http-proxy`)를 설정하고, 병렬 처리 개수는 `concurrency`(또는 `--concurrency`)로 조정한다.
 
@@ -197,7 +200,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
-max_stops: 2
+max_stops: 2 # null 이나 제거 시 모든 경유 검색
 passengers: 1
 ```
 각 여정 항목은 반드시 `outbound`/`inbound`를 사용해야 한다. 각 필드는 문자열 날짜, 날짜 목록, `{start, end}` 범위를 허용하며 범위는 하루씩 확장되어 가능한 조합을 모두 검색한다.
@@ -224,7 +227,7 @@ passengers: 1
 1. 如果还没有安装 uv，请参考下方安装表进行安装。
 2. 运行以下命令：
 ```bash
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -255,6 +258,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 项目根目录的 `config.yaml` 会自动载入；若不存在，可使用 `--config` 或环境变量 `AWESOME_CHEAP_FLIGHTS_CONFIG`。
 - 将 `passengers` 设置为所需成人人数（默认 1）。
 - 用 `max_stops` 限制每段允许的经停次数（0=直飞，1=一段经停，2=两段经停）。
+- 将 `max_stops` 设为 `null` 或直接省略即可搜索全部经停。
 - 省略 `output_path` 时会自动生成 `output/<本地时间戳>_<时区>.csv` 文件名。
 - 需要代理时可设置 `http_proxy`（或 `--http-proxy`），并用 `concurrency`（或 `--concurrency`）控制并行任务数量。
 
@@ -276,7 +280,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
-max_stops: 2
+max_stops: 2 # 设为 null 或删掉即可搜索所有经停
 passengers: 1
 ```
 每个行程必须使用 `outbound`/`inbound`。各字段支持单个日期、日期列表或 `{start, end}` 范围；范围会按天展开，遍历所有组合。
@@ -304,7 +308,7 @@ passengers: 1
 1. まだ uv を入れていない場合は下の表を参考にインストールする。
 2. 次のコマンドを実行する:
 ```bash
-uvx awesome-cheap-flights \
+uvx awesome-cheap-flights@latest@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
@@ -335,6 +339,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - プロジェクト直下の `config.yaml` が自動で読み込まれる。存在しない場合は `--config` か `AWESOME_CHEAP_FLIGHTS_CONFIG` 環境変数を利用する。
 - `passengers` に希望する大人人数を設定する（既定値 1）。
 - `max_stops` で各区間の経由回数を制限する（0=直行、1=1回、2=2回）。
+- `max_stops` を `null` にするか項目自体を省けば全経由を検索する。
 - `output_path` を省略すると `output/<ローカルタイムスタンプ>_<TZ>.csv` が自動生成される。
 - プロキシが必要なら `http_proxy`（または `--http-proxy`）を設定し、併行実行数は `concurrency`（または `--concurrency`）で調整する。
 
@@ -356,7 +361,7 @@ request_delay: 1.0
 max_retries: 2
 max_leg_results: 10
 currency: USD
-max_stops: 2
+max_stops: 2 # null にするか削除すると全経由を探索
 passengers: 1
 ```
 各行程は必ず `outbound`/`inbound` を指定する。フィールドには単一日付、日付リスト、`{start, end}` 範囲が使え、範囲は日単位で展開されて全組み合わせを検索する。
@@ -379,4 +384,4 @@ passengers: 1
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: 207d50c86dab1cb6427a2b711c635f2fc0dbf55d
+Last commit id: a3077763005b39e84d27e07486e4105d285e2e51

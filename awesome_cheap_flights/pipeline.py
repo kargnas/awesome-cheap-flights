@@ -147,7 +147,8 @@ class ProgressReporter:
         table.add_row("Destinations", destinations)
         table.add_row("Passengers", str(self._config.passenger_count))
         table.add_row("Currency", self._config.currency_code)
-        table.add_row("Max stops", str(self._config.max_stops))
+        max_stops_label = "All" if self._config.max_stops is None else str(self._config.max_stops)
+        table.add_row("Max stops", max_stops_label)
         table.add_row("Max leg results", str(self._config.max_leg_results))
         table.add_row("Request delay", f"{self._config.request_delay:.2f}s")
         table.add_row("Retry limit", str(self._config.max_retries))
@@ -171,6 +172,33 @@ def _error(message: str, reporter: Optional[ProgressReporter] = None) -> None:
     else:
         text = message if message.endswith(".") else f"{message}."
         console.log(f"[red]{text}")
+
+
+MAX_EXCEPTION_PREVIEW = 160
+
+
+def _exception_summary(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if not detail:
+        return exc.__class__.__name__
+    first_line = detail.splitlines()[0]
+    if len(first_line) > MAX_EXCEPTION_PREVIEW:
+        return first_line[: MAX_EXCEPTION_PREVIEW - 3] + "..."
+    return first_line
+
+
+def _friendly_exception(exc: Exception, *, debug: bool) -> str:
+    if debug:
+        detail = str(exc).strip()
+        return detail or exc.__class__.__name__
+    summary = _exception_summary(exc)
+    if "no flights found" in summary.lower():
+        return "No flights found"
+    return "Request failed"
+
+
+def _debug_hint(debug: bool) -> str:
+    return "" if debug else " (re-run with --debug to view full error)"
 
 
 def _core_fetch(params: Dict[str, str], proxy: Optional[str]) -> object:
@@ -257,9 +285,10 @@ class SearchConfig:
     max_leg_results: int = 10
     currency_code: str = "USD"
     passenger_count: int = 1
-    max_stops: int = 2
+    max_stops: Optional[int] = None
     http_proxy: Optional[str] = None
     concurrency: int = 1
+    debug: bool = False
 
     def __post_init__(self) -> None:
         self.output_path = Path(self.output_path)
@@ -270,18 +299,20 @@ class SearchConfig:
             raise ValueError(f"Invalid passenger count: {self.passenger_count}") from exc
         if self.passenger_count < 1:
             raise ValueError("Passenger count must be at least 1")
-        try:
-            self.max_stops = int(self.max_stops)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
-        if self.max_stops < 0 or self.max_stops > 2:
-            raise ValueError("Max stops must be between 0 and 2")
+        if self.max_stops is not None:
+            try:
+                self.max_stops = int(self.max_stops)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
+            if self.max_stops < 0 or self.max_stops > 2:
+                raise ValueError("Max stops must be between 0 and 2")
         try:
             self.concurrency = int(self.concurrency)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Invalid concurrency: {self.concurrency}") from exc
         if self.concurrency < 1:
             raise ValueError("Concurrency must be at least 1")
+        self.debug = bool(self.debug)
 
 
 @dataclass
@@ -430,7 +461,7 @@ def fetch_leg_html(
     origin_code: str,
     destination_code: str,
     departure_date: str,
-    max_stops: int,
+    max_stops: Optional[int],
     passenger_count: int,
     currency_code: str,
     proxy: Optional[str],
@@ -467,7 +498,7 @@ def fetch_round_trip_price(
     destination_code: str,
     departure_date: str,
     return_date: str,
-    max_stops: int,
+    max_stops: Optional[int],
     reporter: Optional[ProgressReporter] = None,
 ) -> Optional[int]:
     last_exc: Optional[Exception] = None
@@ -509,10 +540,12 @@ def fetch_round_trip_price(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             wait_time = config.request_delay * attempt
+            detail = _friendly_exception(exc, debug=config.debug)
+            hint = _debug_hint(config.debug)
             _warn(
                 (
                     f"Round-trip fail {origin_code}->{destination_code} "
-                    f"{departure_date}/{return_date} try {attempt}: {exc}"
+                    f"{departure_date}/{return_date} try {attempt}: {detail}{hint}"
                 ),
                 reporter,
             )
@@ -526,7 +559,9 @@ def fetch_round_trip_price(
             ),
             reporter,
         )
-        _error(f"Round-trip last error: {last_exc}", reporter)
+        detail = _friendly_exception(last_exc, debug=config.debug)
+        hint = _debug_hint(config.debug)
+        _error(f"Round-trip last error: {detail}{hint}", reporter)
     return None
 
 
@@ -536,7 +571,7 @@ def fetch_leg_flights(
     origin_code: str,
     destination_code: str,
     departure_date: str,
-    max_stops: int,
+    max_stops: Optional[int],
     reporter: Optional[ProgressReporter] = None,
 ) -> List[LegFlight]:
     last_exc: Optional[Exception] = None
@@ -574,10 +609,12 @@ def fetch_leg_flights(
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             wait_time = config.request_delay * attempt
+            detail = _friendly_exception(exc, debug=config.debug)
+            hint = _debug_hint(config.debug)
             _warn(
                 (
                     f"Leg fail {origin_code}->{destination_code} "
-                    f"{departure_date} try {attempt}: {exc}"
+                    f"{departure_date} try {attempt}: {detail}{hint}"
                 ),
                 reporter,
             )
@@ -593,7 +630,9 @@ def fetch_leg_flights(
                 ),
                 reporter,
             )
-            _error(f"Leg last error: {last_exc}", reporter)
+            detail = _friendly_exception(last_exc, debug=config.debug)
+            hint = _debug_hint(config.debug)
+            _error(f"Leg last error: {detail}{hint}", reporter)
         return []
 
     flights: List[LegFlight] = []

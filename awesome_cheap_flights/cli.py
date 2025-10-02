@@ -16,7 +16,8 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_MAX_LEG_RESULTS = 10
 DEFAULT_CURRENCY = "USD"
 DEFAULT_PASSENGERS = 1
-DEFAULT_MAX_STOPS = 2
+DEFAULT_MAX_STOPS: int | None = None
+DEFAULT_DEBUG = False
 DEFAULT_CONCURRENCY = 1
 CONFIG_ENV_VAR = "AWESOME_CHEAP_FLIGHTS_CONFIG"
 DATE_FMT = "%Y-%m-%d"
@@ -225,17 +226,23 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     if passenger_count < 1:
         raise ValueError("Passenger count must be at least 1")
 
-    max_stops_value = config_data.get("max_stops", DEFAULT_MAX_STOPS)
+    max_stops: int | None
     if args.max_stops is not None:
-        max_stops_value = args.max_stops
-    max_stops_raw = strip_comment(max_stops_value)
-    if max_stops_raw == "":
-        raise ValueError("Max stops must be provided")
-    try:
-        max_stops = int(max_stops_raw)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid max stops: {max_stops_value}") from exc
-    if max_stops < 0 or max_stops > 2:
+        max_stops = args.max_stops
+    else:
+        max_stops_value = config_data.get("max_stops", DEFAULT_MAX_STOPS)
+        if max_stops_value is None:
+            max_stops = None
+        else:
+            max_stops_raw = strip_comment(max_stops_value)
+            if max_stops_raw == "":
+                max_stops = None
+            else:
+                try:
+                    max_stops = int(max_stops_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(f"Invalid max stops: {max_stops_value}") from exc
+    if max_stops is not None and (max_stops < 0 or max_stops > 2):
         raise ValueError("Max stops must be between 0 and 2")
 
     proxy_value = config_data.get("http_proxy")
@@ -256,6 +263,15 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     if concurrency < 1:
         raise ValueError("Concurrency must be at least 1")
 
+    debug_value = config_data.get("debug", DEFAULT_DEBUG)
+    if isinstance(debug_value, str):
+        normalized = debug_value.strip().lower()
+        debug_flag = normalized in {"1", "true", "yes", "on"}
+    else:
+        debug_flag = bool(debug_value)
+    if args.debug:
+        debug_flag = True
+
     return SearchConfig(
         origins=departures,
         destinations=destinations,
@@ -269,6 +285,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         max_stops=max_stops,
         http_proxy=http_proxy,
         concurrency=concurrency,
+        debug=debug_flag,
     )
 
 
@@ -309,7 +326,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--max-stops",
         type=int,
-        help="Maximum stops per leg (0=nonstop, 1=one stop, 2=two stops)",
+        help="Maximum stops per leg (0=nonstop, 1=one stop, 2=two stops; omit for all stops)",
     )
     parser.add_argument(
         "--http-proxy",
@@ -319,6 +336,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--concurrency",
         type=int,
         help="Number of itinerary combinations to process in parallel",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show detailed errors for failed flight lookups",
     )
     return parser.parse_args(argv)
 

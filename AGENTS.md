@@ -25,11 +25,12 @@
 - A search overview table is emitted upfront listing origin codes, destination codes, pax, currency, and other knobs; each iteration label repeats route, pax, and currency for quick scanning.
 
 ## Build, Test, and Development Commands
-- `uvx awesome-cheap-flights --help`: Smoke-check the published CLI.
+- `uvx awesome-cheap-flights@latest@latest --help`: Smoke-check the published CLI.
 - `uv run python -m awesome_cheap_flights.cli --config sample.config.yaml --output output/demo.csv`: Executes a lightweight search using the sample config.
 - `uv run python -m awesome_cheap_flights.cli --output output/full.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04`: Direct CLI run overriding config-specified values.
 - `uv lock`: Refreshes dependency lockfile after editing `pyproject.toml`.
 - Run uv lock after dependency bumps to refresh typing_extensions pin.
+- Add `--debug` to CLI runs when you need the full provider error payload.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8 defaults; prefer 4-space indentation and descriptive snake_case identifiers.
@@ -55,7 +56,7 @@
 - Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.
 - Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 - Use the `passengers` key to control the number of adult seats (defaults to 1).
-- Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops).
+- Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops). Set `max_stops` to `null` or omit the key for unlimited stops.
 - Legacy `departure`/`return` itinerary keys are removed; only `outbound`/`inbound` are valid now.
 - If neither CLI nor YAML sets an output path, the run writes to `output/<local timestamp>_<TZ>.csv`.
 - HTTP proxy support is available via `http_proxy` (YAML) or `--http-proxy`.
@@ -66,4 +67,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; it builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 207d50c86dab1cb6427a2b711c635f2fc0dbf55d
+Last commit id: a3077763005b39e84d27e07486e4105d285e2e51

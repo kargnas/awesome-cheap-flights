@@ -24,7 +24,7 @@ output_path: output/sample.csv
 request_delay: 0.5
 max_retries: 1
 max_leg_results: 3
-max_stops: 2 # 0=nonstop, 1=one stop, 2=two stops
+max_stops: 2 # 0=nonstop, 1=one stop, 2=two stops (set null or remove for unlimited)
 passengers: 1 # Total adult passengers
 # http_proxy: http://127.0.0.1:8080
 # concurrency: 2
