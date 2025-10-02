@@ -1,6 +1,12 @@
-# Awesome Cheap Flights
+<h1 align="center">
+  <img src="assets/logo.png" alt="Awesome Cheap Flights" width="320" style="max-width:60%;height:auto;margin:24px auto 0;display:block;" />
+</h1>
 
-[![release](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml)
+<p align="center">
+  <a href="https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml">
+    <img src="https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml/badge.svg?branch=main" alt="release" />
+  </a>
+</p>
 
 <p align="center">
   <img src="assets/console.png" alt="Rich console demo displaying itinerary progress and captured rows" />
@@ -14,6 +20,11 @@ Our Rich-powered console keeps every run transparent—see itinerary progress, c
   <em>Perfect fares for perfectionists.</em>
 </p>
 
+> **One-shot demo**
+> ```bash
+> uvx awesome-cheap-flights@latest --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05 --output peak.csv
+> ```
+
 Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a browser.
 
 ## Quick win (uvx)
@@ -26,13 +37,13 @@ source "$HOME/.local/bin/env"
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
+  --destination HKG \
   --outbound 2026-01-01 \
   --inbound 2026-01-04
 uvx awesome-cheap-flights@latest \
   --output sample-range.csv \
   --departure ICN \
-  --destination FUK \
+  --destination HKG \
   --outbound 2026-01-01:2026-01-03 \
   --inbound 2026-01-05
 ```
@@ -44,13 +55,13 @@ powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps
 uvx awesome-cheap-flights@latest `
   --output sample.csv `
   --departure ICN `
-  --destination FUK `
+  --destination HKG `
   --outbound 2026-01-01 `
   --inbound 2026-01-04
 uvx awesome-cheap-flights@latest `
   --output sample-range.csv `
   --departure ICN `
-  --destination FUK `
+  --destination HKG `
   --outbound 2026-01-01:2026-01-03 `
   --inbound 2026-01-05
 ```
@@ -143,7 +154,7 @@ uv run python -m awesome_cheap_flights.cli \
 departures:
   - ICN # Seoul Incheon
 destinations:
-  - FUK # Fukuoka
+  - HKG # Hong Kong
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -221,8 +232,8 @@ pip이 더 익숙하면 한 번만 설치한 뒤 콘솔 스크립트를 사용�
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 설정 심화
@@ -245,7 +256,7 @@ awesome-cheap-flights --output sample-range.csv --departure ICN --destination FU
 departures:
   - ICN # Seoul Incheon
 destinations:
-  - FUK # Fukuoka
+  - HKG # Hong Kong
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -320,8 +331,8 @@ uvx awesome-cheap-flights@latest \
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 配置详解
@@ -344,7 +355,7 @@ awesome-cheap-flights --output sample-range.csv --departure ICN --destination FU
 departures:
   - ICN # Seoul Incheon
 destinations:
-  - FUK # Fukuoka
+  - HKG # Hong Kong
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -419,8 +430,8 @@ pip を使いたい場合は一度インストールしてからコンソール�
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 設定の詳細
@@ -443,7 +454,7 @@ awesome-cheap-flights --output sample-range.csv --departure ICN --destination FU
 departures:
   - ICN # Seoul Incheon
 destinations:
-  - FUK # Fukuoka
+  - HKG # Hong Kong
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
