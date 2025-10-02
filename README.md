@@ -3,6 +3,12 @@
 [![release](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/kargnas/awesome-cheap-flights/actions/workflows/release.yml)
 
 <p align="center">
+  <img src="assets/console.png" alt="Rich console demo displaying itinerary progress and captured rows" />
+</p>
+
+Our Rich-powered console keeps every run transparent—see itinerary progress, captured rows, and pause/resume hints without leaving your terminal.
+
+<p align="center">
   <img src="assets/image.png" alt="Pivot table of nonstop ICN fares." />
   <br />
   <em>Perfect fares for perfectionists.</em>
