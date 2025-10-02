@@ -29,6 +29,7 @@
 - `uv run python -m awesome_cheap_flights.cli --config sample.config.yaml --output output/demo.csv`: Executes a lightweight search using the sample config.
 - `uv run python -m awesome_cheap_flights.cli --output output/full.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04`: Direct CLI run overriding config-specified values.
 - `uv lock`: Refreshes dependency lockfile after editing `pyproject.toml`.
+- Run uv lock after dependency bumps to refresh typing_extensions pin.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+, PEP 8 defaults; prefer 4-space indentation and descriptive snake_case identifiers.
@@ -65,4 +66,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; it builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: da8db682d8ecb073ee15601073ca786efcbee654
+Last commit id: 207d50c86dab1cb6427a2b711c635f2fc0dbf55d

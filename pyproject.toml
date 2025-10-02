@@ -9,6 +9,7 @@ dependencies = [
     "json5>=0.12.1",
     "pyyaml>=6.0.3",
     "rich>=13.7",
+    "typing-extensions>=4.5",
 ]
 
 authors = [{ name = "Awesome Cheap Flights Maintainers" }]

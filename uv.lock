@@ -11,6 +11,7 @@ dependencies = [
     { name = "json5" },
     { name = "pyyaml" },
     { name = "rich" },
+    { name = "typing-extensions" },
 ]
 
 [package.metadata]
@@ -19,6 +20,7 @@ requires-dist = [
     { name = "json5", specifier = ">=0.12.1" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=13.7" },
+    { name = "typing-extensions", specifier = ">=4.5" },
 ]
 
 [[package]]
@@ -229,4 +231,13 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/60/c0/30ce665b7382f663fdbb282748ddee392a61c85f51862776b128d8644d45/selectolax-0.3.34-cp314-cp314t-win32.whl", hash = "sha256:b957d105c2f3d86de872f61be1c9a92e1d84580a5ec89a413282f60ffb3f7bc1", size = 1828494 },
     { url = "https://files.pythonhosted.org/packages/a4/9e/11d023ad74d0d1a48cefdddbb2d00365c4d9a97735d7c24c0f206cd1babb/selectolax-0.3.34-cp314-cp314t-win_amd64.whl", hash = "sha256:9c609d639ce09154d688063bb830dc351fb944fa52629e25717dbab45ad04327", size = 1951608 },
     { url = "https://files.pythonhosted.org/packages/cc/20/a5f93b84e3e6de9756dc82465c0dff57b1c8a25b1815bca0817e4342494c/selectolax-0.3.34-cp314-cp314t-win_arm64.whl", hash = "sha256:6359e94d66fb4fce9fb7c9d18252c3d8cba28b90f7412da8ce610bd77746f750", size = 1852855 },
+]
+
+[[package]]
+name = "typing-extensions"
+version = "4.15.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/94/1a15dd82efb362ac84269196e94cf00f187f7ed21c242792a923cdb1c61f/typing_extensions-4.15.0.tar.gz", hash = "sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466", size = 109391 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl", hash = "sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548", size = 44614 },
 ]
