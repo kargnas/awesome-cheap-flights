@@ -39,12 +39,6 @@ uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination HKG \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
-uvx awesome-cheap-flights@latest \
-  --output sample-range.csv \
-  --departure ICN \
-  --destination HKG \
   --outbound 2026-01-01:2026-01-03 \
   --inbound 2026-01-05
 ```
@@ -55,12 +49,6 @@ uvx awesome-cheap-flights@latest \
 powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"
 uvx awesome-cheap-flights@latest `
   --output sample.csv `
-  --departure ICN `
-  --destination HKG `
-  --outbound 2026-01-01 `
-  --inbound 2026-01-04
-uvx awesome-cheap-flights@latest `
-  --output sample-range.csv `
   --departure ICN `
   --destination HKG `
   --outbound 2026-01-01:2026-01-03 `
@@ -75,13 +63,7 @@ source "$HOME/.local/bin/env"
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
-uvx awesome-cheap-flights@latest \
-  --output sample-range.csv \
-  --departure ICN \
-  --destination FUK \
+  --destination HKG \
   --outbound 2026-01-01:2026-01-03 \
   --inbound 2026-01-05
 ```
@@ -96,9 +78,9 @@ source "$HOME/.local/bin/env"
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
+  --destination HKG \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
 
 Open the CSV and sort by `total_price` in your spreadsheet app.
@@ -139,7 +121,7 @@ uv run python -m awesome_cheap_flights.cli \
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
 - CLI overrides cover **departures**, **destinations**, outbound/inbound dates (`--outbound`, `--inbound`), the **output CSV path**, `currency`, `passengers`, and `max_stops`.
 - `--outbound`/`--inbound` accept single dates or ranges (`start:end`) and expand every combination.
-- Separate multiple destination airports with commas or by repeating the flag (for example, `--destination FUK,HND`).
+- Separate multiple destination airports with commas or by repeating the flag (for example, `--destination HKG,HND`).
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
 - Omit `output_path` and the CLI will fall back to `output/<local timestamp>_<TZ>.csv`.
@@ -211,9 +193,9 @@ Push to `main` triggers the `release` workflow automatically with a patch bump, 
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
+  --destination HKG \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
 
 3. 스프레드시트 앱에서 CSV를 열고 `total_price` 기준으로 정렬한다.
@@ -233,8 +215,7 @@ pip이 더 익숙하면 한 번만 설치한 뒤 콘솔 스크립트를 사용�
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 설정 심화
@@ -310,9 +291,9 @@ passengers: 1
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
+  --destination HKG \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
 
 3. 在表格软件中打开 CSV，并按 `total_price` 排序。
@@ -332,8 +313,7 @@ uvx awesome-cheap-flights@latest \
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 配置详解
@@ -409,9 +389,9 @@ passengers: 1
 uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
-  --destination FUK \
-  --outbound 2026-01-01 \
-  --inbound 2026-01-04
+  --destination HKG \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
 
 3. 表計算ソフトで CSV を開き、`total_price` でソートする。
@@ -431,8 +411,7 @@ pip を使いたい場合は一度インストールしてからコンソール�
 
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01 --inbound 2026-01-04
-awesome-cheap-flights --output sample-range.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
+awesome-cheap-flights --output sample.csv --departure ICN --destination HKG --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 設定の詳細
