@@ -1,6 +1,6 @@
 [project]
 name = "awesome-cheap-flights"
-version = "0.2.0"
+version = "0.2.1"
 description = "Weekend-hopper toolkit for ICN short-haul scouting"
 readme = "README.md"
 requires-python = ">=3.10"
