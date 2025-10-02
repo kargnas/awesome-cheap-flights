@@ -23,6 +23,7 @@
 - Non-interactive sessions fall back to concise text logs on stderr while preserving the same counts.
 - A summary table prints after each run with processed itineraries, skips, rows collected, and elapsed minutes.
 - A search overview table is emitted upfront listing origin codes, destination codes, pax, currency, and other knobs; each iteration label repeats route, pax, and currency for quick scanning.
+- The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 
 ## Build, Test, and Development Commands
 - `uvx awesome-cheap-flights@latest@latest --help`: Smoke-check the published CLI.
@@ -64,7 +65,7 @@
 
 ## Release / Publishing
 - `scripts/bump_version.py --level {patch|minor|current}` updates `pyproject.toml` and writes the new version to stdout (and optional file). Use `current` to reuse the existing version.
-- `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; it builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
+- `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: a3077763005b39e84d27e07486e4105d285e2e51
+Last commit id: f1cf706a1907e62ae0114a068b3c5ff40c06d25d

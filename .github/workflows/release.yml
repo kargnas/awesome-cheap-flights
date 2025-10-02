@@ -76,6 +76,13 @@ jobs:
           echo "should_release=true" >> "$GITHUB_OUTPUT"
           echo "base_commit=$base_commit" >> "$GITHUB_OUTPUT"
           echo "Releasing for changes relative to $base_commit." >> "$GITHUB_STEP_SUMMARY"
+          commit_subject=$(git log -1 --pretty=%s "$head_commit")
+          level_hint="patch"
+          if [[ "$commit_subject" =~ \[minor\]$ ]]; then
+            level_hint="minor"
+          fi
+          echo "commit_level=$level_hint" >> "$GITHUB_OUTPUT"
+          echo "Version bump level inferred as $level_hint from commit subject '$commit_subject'." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v1
@@ -85,7 +92,11 @@ jobs:
         id: bump
         if: steps.eligibility.outputs.should_release == 'true'
         run: |
-          LEVEL="${DISPATCH_LEVEL:-patch}"
+          FALLBACK="${{ steps.eligibility.outputs.commit_level }}"
+          LEVEL="${DISPATCH_LEVEL:-$FALLBACK}"
+          if [ -z "$LEVEL" ]; then
+            LEVEL="patch"
+          fi
           python3 scripts/bump_version.py --level "$LEVEL" --output version.env
           cat version.env >> "$GITHUB_OUTPUT"
           rm version.env

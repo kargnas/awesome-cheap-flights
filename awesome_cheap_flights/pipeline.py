@@ -2,8 +2,8 @@ import csv
 import json
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
@@ -18,6 +18,7 @@ from selectolax.lexbor import LexborHTMLParser
 
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import (
     BarColumn,
     Progress,
@@ -70,6 +71,11 @@ class ProgressReporter:
             self._progress.__enter__()
             self._task_id = self._progress.add_task("Preparing", total=self.total_steps)
         self._render_overview()
+        tip = "Press Ctrl+C anytime to pause and save a draft CSV."
+        if self._progress is not None:
+            self._progress.log(f"[cyan]{tip}")
+        else:
+            console.log(f"[cyan]{tip}")
         return self
 
     def __exit__(self, exc_type, exc, exc_tb) -> None:
@@ -156,6 +162,29 @@ class ProgressReporter:
         table.add_row("HTTP proxy", self._config.http_proxy or "-")
         table.add_row("Total itineraries", str(total_pairs))
         console.print(table)
+
+
+class RunInterrupted(Exception):
+    def __init__(
+        self,
+        *,
+        rows: List["ItineraryRow"],
+        processed: int,
+        skipped: int,
+        collected: int,
+        total: int,
+    ) -> None:
+        super().__init__("Search interrupted by user")
+        self.rows = rows
+        self.processed = processed
+        self.skipped = skipped
+        self.collected = collected
+        self.total = total
+
+    @property
+    def remaining(self) -> int:
+        value = self.total - self.processed
+        return value if value > 0 else 0
 
 
 def _warn(message: str, reporter: Optional[ProgressReporter] = None) -> None:
@@ -759,17 +788,28 @@ def build_itineraries(
     return rows
 
 
-def write_csv(rows: Sequence[ItineraryRow], output_path: Path) -> None:
-    if not rows:
+def write_csv(
+    rows: Sequence[ItineraryRow],
+    output_path: Path,
+    *,
+    include_header_only: bool = False,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if rows:
+        fieldnames = list(asdict(rows[0]).keys())
+        with output_path.open("w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(asdict(row))
+        return
+    if not include_header_only:
         _warn("No flight data available to write")
         return
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    header_fields = [field.name for field in fields(ItineraryRow)]
     with output_path.open("w", newline="", encoding="utf-8") as csvfile:
-        fieldnames = list(asdict(rows[0]).keys())
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=header_fields)
         writer.writeheader()
-        for row in rows:
-            writer.writerow(asdict(row))
 
 
 def run_search(config: SearchConfig) -> List[ItineraryRow]:
@@ -790,51 +830,90 @@ def run_search(config: SearchConfig) -> List[ItineraryRow]:
 
     total_steps = len(tasks)
     with ProgressReporter(total_steps, config=config) as reporter:
-        if config.concurrency <= 1:
-            for origin_code, _, destination, departure_date, return_date, label in tasks:
-                rows = build_itineraries(
-                    config=config,
-                    origin_code=origin_code,
-                    destination=destination,
-                    departure_date=departure_date,
-                    return_date=return_date,
-                    reporter=reporter,
-                )
-                added = len(rows)
-                all_rows.extend(rows)
-                if added > 0:
-                    reporter.record_success(label, added)
-                else:
-                    reporter.record_skip(label, "Empty leg")
-                time.sleep(config.request_delay)
-        else:
-            def process_task(task: Tuple[str, str, Dict[str, str], str, str, str]) -> Tuple[str, List[ItineraryRow]]:
-                origin_code, _, destination, departure_date, return_date, label = task
-                rows = build_itineraries(
-                    config=config,
-                    origin_code=origin_code,
-                    destination=destination,
-                    departure_date=departure_date,
-                    return_date=return_date,
-                    reporter=None,
-                )
-                return label, rows
-
-            with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
-                futures = {executor.submit(process_task, task): task for task in tasks}
-                for future in as_completed(futures):
-                    label, rows = future.result()
+        executor_ref: Optional[ThreadPoolExecutor] = None
+        futures_map: Optional[Dict[Future, Tuple[str, str, Dict[str, str], str, str, str]]] = None
+        try:
+            if config.concurrency <= 1:
+                for origin_code, _, destination, departure_date, return_date, label in tasks:
+                    rows = build_itineraries(
+                        config=config,
+                        origin_code=origin_code,
+                        destination=destination,
+                        departure_date=departure_date,
+                        return_date=return_date,
+                        reporter=reporter,
+                    )
                     added = len(rows)
                     all_rows.extend(rows)
                     if added > 0:
                         reporter.record_success(label, added)
                     else:
                         reporter.record_skip(label, "Empty leg")
+                    time.sleep(config.request_delay)
+            else:
+                def process_task(task: Tuple[str, str, Dict[str, str], str, str, str]) -> Tuple[str, List[ItineraryRow]]:
+                    origin_code, _, destination, departure_date, return_date, label = task
+                    rows = build_itineraries(
+                        config=config,
+                        origin_code=origin_code,
+                        destination=destination,
+                        departure_date=departure_date,
+                        return_date=return_date,
+                        reporter=None,
+                    )
+                    return label, rows
+
+                with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+                    executor_ref = executor
+                    futures_map = {executor.submit(process_task, task): task for task in tasks}
+                    for future in as_completed(futures_map):
+                        label, rows = future.result()
+                        added = len(rows)
+                        all_rows.extend(rows)
+                        if added > 0:
+                            reporter.record_success(label, added)
+                        else:
+                            reporter.record_skip(label, "Empty leg")
+        except KeyboardInterrupt:  # noqa: PERF203
+            if futures_map:
+                for future in futures_map:
+                    try:
+                        future.cancel()
+                    except Exception:  # pragma: no cover - best effort cleanup
+                        pass
+            if executor_ref is not None:
+                executor_ref.shutdown(wait=False, cancel_futures=True)
+            raise RunInterrupted(
+                rows=list(all_rows),
+                processed=reporter.processed,
+                skipped=reporter.skipped,
+                collected=reporter.rows_collected,
+                total=total_steps,
+            ) from None
     return all_rows
 
 
 def execute_search(config: SearchConfig) -> List[ItineraryRow]:
-    rows = run_search(config)
+    try:
+        rows = run_search(config)
+    except RunInterrupted as interrupted:
+        rows = interrupted.rows
+        original_name = config.output_path.name
+        draft_name = f"draft-{original_name}"
+        draft_path = config.output_path.with_name(draft_name)
+        write_csv(rows, draft_path, include_header_only=True)
+        console.log(
+            "[yellow]Search interrupted by Ctrl+C. Partial results saved successfully.[/]"
+        )
+        draft_display = escape(str(draft_path))
+        console.log(
+            (
+                f"[yellow]Draft path: {draft_display}. Processed {interrupted.processed}/"
+                f"{interrupted.total} itineraries; remaining {interrupted.remaining}."
+                f" Rows collected {interrupted.collected}, skipped {interrupted.skipped}.[/]"
+            )
+        )
+        return rows
     if not rows:
         _warn("No flights captured")
         return rows
@@ -850,4 +929,5 @@ __all__ = [
     "ItineraryRow",
     "run_search",
     "execute_search",
+    "RunInterrupted",
 ]

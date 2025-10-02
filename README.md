@@ -63,6 +63,7 @@ Open the CSV and sort by `total_price` in your spreadsheet app.
 ### Troubleshooting
 - Missing typing_extensions means version below 0.1.7. Upgrade package.
 - Need verbose errors? Append `--debug` to show the provider response dump.
+- Pressing `Ctrl+C` writes a draft CSV and exits cleanly; rerun without the flag to resume from scratch.
 
 ## Local dev run
 
@@ -84,6 +85,7 @@ uv run python -m awesome_cheap_flights.cli \
 - Non-interactive environments emit concise stderr lines with the same counts, keeping CI transcripts readable.
 - Warning and error notes are color coded when supported, matching the progress summary table at the end of each run.
 - Progress labels show origin/destination, passenger count, and currency so every line carries the full search context.
+- Press `Ctrl+C` anytime to pause gracefully; the CLI saves partial rows to `draft-<original>.csv` and shows how many itineraries remain.
 
 ## Configuration deep dive
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
@@ -139,7 +141,7 @@ Each row contains these fields:
 - `awesome_cheap_flights/pipeline.py`: reusable pipeline encapsulating scraping, combination, and CSV export
 
 ## Release automation
-Push to `main` triggers the `release` workflow automatically with a patch bump, build, publish, tag, and GitHub Release when changes touch `awesome_cheap_flights/*.py`, root-level `*.toml`, or `uv.lock`, and HEAD differs from the last release tag. Use the workflow_dispatch trigger when you need a manual run with `minor` or `current`. Provide a `PYPI_TOKEN` secret with publish rights. Select `current` to reuse the existing version number.
+Push to `main` triggers the `release` workflow automatically with a patch bump, build, publish, tag, and GitHub Release when changes touch `awesome_cheap_flights/*.py`, root-level `*.toml`, or `uv.lock`, and HEAD differs from the last release tag. Append `[minor]` to the end of the first commit subject line if you want that run to bump the minor version instead. Use the workflow_dispatch trigger when you need a manual run with `minor` or `current`. Provide a `PYPI_TOKEN` secret with publish rights. Select `current` to reuse the existing version number.
 
 ## README (한국어)
 ### 빠른 실행 (uvx)
@@ -179,6 +181,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - `passengers`에 원하는 성인 좌석 수를 넣으면 된다(기본 1명).
 - `max_stops`로 허용 경유 횟수를 제한하라(0=논스탑, 1=한 번, 2=두 번).
 - `max_stops`를 `null`로 두거나 아예 빼면 모든 경유를 검색한다.
+- 실행 중 `Ctrl+C`를 누르면 `draft-원래파일.csv` 임시본을 저장하고 남은 여정 수를 알려준다.
 - `output_path`를 비워두면 `output/<로컬타임스탬프>_<TZ>.csv` 파일명이 자동으로 생성된다.
 - 프록시가 필요하면 `http_proxy`(또는 `--http-proxy`)를 설정하고, 병렬 처리 개수는 `concurrency`(또는 `--concurrency`)로 조정한다.
 
@@ -259,6 +262,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 将 `passengers` 设置为所需成人人数（默认 1）。
 - 用 `max_stops` 限制每段允许的经停次数（0=直飞，1=一段经停，2=两段经停）。
 - 将 `max_stops` 设为 `null` 或直接省略即可搜索全部经停。
+- 运行途中按下 `Ctrl+C` 会保存 `draft-原文件名.csv` 草稿并显示剩余航段数。
 - 省略 `output_path` 时会自动生成 `output/<本地时间戳>_<时区>.csv` 文件名。
 - 需要代理时可设置 `http_proxy`（或 `--http-proxy`），并用 `concurrency`（或 `--concurrency`）控制并行任务数量。
 
@@ -340,6 +344,7 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - `passengers` に希望する大人人数を設定する（既定値 1）。
 - `max_stops` で各区間の経由回数を制限する（0=直行、1=1回、2=2回）。
 - `max_stops` を `null` にするか項目自体を省けば全経由を検索する。
+- 実行中に `Ctrl+C` を押すと `draft-元ファイル名.csv` を保存し、残り件数を表示する。
 - `output_path` を省略すると `output/<ローカルタイムスタンプ>_<TZ>.csv` が自動生成される。
 - プロキシが必要なら `http_proxy`（または `--http-proxy`）を設定し、併行実行数は `concurrency`（または `--concurrency`）で調整する。
 
@@ -384,4 +389,4 @@ passengers: 1
 ### リリース自動化
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: a3077763005b39e84d27e07486e4105d285e2e51
+Last commit id: f1cf706a1907e62ae0114a068b3c5ff40c06d25d
