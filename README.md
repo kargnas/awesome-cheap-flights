@@ -8,17 +8,18 @@
   </a>
 </p>
 
-<p align="center">
-  <img src="assets/console.png" alt="Rich console demo displaying itinerary progress and captured rows" />
-</p>
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/console.png" alt="Rich console demo displaying itinerary progress and captured rows" width="420" />
+    </td>
+    <td align="center">
+      <img src="assets/image.png" alt="Pivot table of nonstop ICN fares." width="420" />
+    </td>
+  </tr>
+</table>
 
-Our Rich-powered console keeps every run transparent—see itinerary progress, captured rows, and pause/resume hints without leaving your terminal.
-
-<p align="center">
-  <img src="assets/image.png" alt="Pivot table of nonstop ICN fares." />
-  <br />
-  <em>Perfect fares for perfectionists.</em>
-</p>
+<p align="center"><em>Stay in the loop from terminal to spreadsheet—capture progress live and review fares instantly.</em></p>
 
 > **One-shot demo**
 > ```bash
