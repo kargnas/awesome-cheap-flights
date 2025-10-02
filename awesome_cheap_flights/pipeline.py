@@ -360,8 +360,12 @@ class ItineraryRow:
     origin_code: str
     destination_code: str
     outbound_departure_at: str
+    outbound_departure_date: str
+    outbound_departure_time: str
     outbound_duration_hours: Optional[float]
     return_departure_at: str
+    return_departure_date: str
+    return_departure_time: str
     return_duration_hours: Optional[float]
     outbound_airline: str
     outbound_stops: str
@@ -418,6 +422,19 @@ def parse_duration_to_hours(raw: str) -> Optional[float]:
         return None
     value = total_minutes / 60
     return round(value, 2)
+
+
+def split_datetime_components(timestamp: str) -> Tuple[str, str]:
+    if not timestamp:
+        return "", ""
+    try:
+        dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+    except ValueError:
+        if " " in timestamp:
+            date_part, time_part = timestamp.split(" ", 1)
+            return date_part.strip(), time_part.strip()[:5]
+        return timestamp, ""
 
 
 def extract_stop_codes(raw: str) -> str:
@@ -749,13 +766,19 @@ def build_itineraries(
             total_price: Optional[int] = None
             if outbound.price is not None and inbound.price is not None:
                 total_price = outbound.price + inbound.price
+            outbound_date, outbound_time = split_datetime_components(outbound.departure_at)
+            return_date, return_time = split_datetime_components(inbound.departure_at)
             rows.append(
                 ItineraryRow(
                     origin_code=origin_code,
                     destination_code=destination["iata"],
                     outbound_departure_at=outbound.departure_at,
+                    outbound_departure_date=outbound_date,
+                    outbound_departure_time=outbound_time,
                     outbound_duration_hours=outbound.duration_hours,
                     return_departure_at=inbound.departure_at,
+                    return_departure_date=return_date,
+                    return_departure_time=return_time,
                     return_duration_hours=inbound.duration_hours,
                     outbound_airline=outbound.airline_name,
                     outbound_stops=outbound.stops,

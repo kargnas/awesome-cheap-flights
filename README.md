@@ -13,47 +13,74 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening a brow
 ## Quick win (uvx)
 
 ### macOS / Linux
+
 ```bash
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
+uvx awesome-cheap-flights@latest \
+  --output sample-range.csv \
+  --departure ICN \
+  --destination FUK \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
 
 ### Windows (PowerShell)
+
 ```powershell
 powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"
-uvx awesome-cheap-flights@latest@latest `
+uvx awesome-cheap-flights@latest `
   --output sample.csv `
   --departure ICN `
   --destination FUK `
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 `
+  --inbound 2026-01-04
+uvx awesome-cheap-flights@latest `
+  --output sample-range.csv `
+  --departure ICN `
+  --destination FUK `
+  --outbound 2026-01-01:2026-01-03 `
+  --inbound 2026-01-05
 ```
 
 ### iOS (a-Shell / latest iSH)
+
 ```sh
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
+uvx awesome-cheap-flights@latest \
+  --output sample-range.csv \
+  --departure ICN \
+  --destination FUK \
+  --outbound 2026-01-01:2026-01-03 \
+  --inbound 2026-01-05
 ```
+
 ### Android (Termux)
+
 ```sh
 pkg update
 pkg install curl python
 curl -Ls https://astral.sh/uv/install.sh | sh
 source "$HOME/.local/bin/env"
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
 ```
 
 Open the CSV and sort by `total_price` in your spreadsheet app.
@@ -61,6 +88,7 @@ Open the CSV and sort by `total_price` in your spreadsheet app.
 `uvx` pulls the published package from PyPI, so you do not need to clone or configure anything else.
 
 ### Troubleshooting
+
 - Missing typing_extensions means version below 0.1.7. Upgrade package.
 - Need verbose errors? Append `--debug` to show the provider response dump.
 - Pressing `Ctrl+C` writes a draft CSV and exits cleanly; rerun without the flag to resume from scratch.
@@ -80,6 +108,7 @@ uv run python -m awesome_cheap_flights.cli \
 - Skip `--output` to let the tool save into `output/YYYYMMDD_HHMMSS_<TZ>.csv` (local clock with timezone code).
 
 ### Visual logging
+
 - Interactive terminals now render a Rich progress bar that tracks itinerary combos and cumulative rows captured.
 - Each processed pair logs added rows so you can gauge coverage without opening the CSV.
 - Non-interactive environments emit concise stderr lines with the same counts, keeping CI transcripts readable.
@@ -88,8 +117,10 @@ uv run python -m awesome_cheap_flights.cli \
 - Press `Ctrl+C` anytime to pause gracefully; the CLI saves partial rows to `draft-<original>.csv` and shows how many itineraries remain.
 
 ## Configuration deep dive
+
 - Advanced knobs (request delay, retry counts, per-leg limits) live in YAML.
-- CLI overrides cover **departures**, **destinations**, **itineraries**, the **output CSV path**, `currency`, `passengers`, and `max_stops`.
+- CLI overrides cover **departures**, **destinations**, outbound/inbound dates (`--outbound`, `--inbound`), the **output CSV path**, `currency`, `passengers`, and `max_stops`.
+- `--outbound`/`--inbound` accept single dates or ranges (`start:end`) and expand every combination.
 - Separate multiple destination airports with commas or by repeating the flag (for example, `--destination FUK,HND`).
 - Inline comments with `#` keep airport notes readable.
 - `config.yaml` in the project root is picked up automatically; otherwise use `--config` or set `AWESOME_CHEAP_FLIGHTS_CONFIG`.
@@ -101,11 +132,12 @@ uv run python -m awesome_cheap_flights.cli \
 - Set `max_stops` to `null` or omit the key to search every stop.
 
 ### YAML sample
+
 ```yaml
 departures:
-  - ICN  # Seoul Incheon
+  - ICN # Seoul Incheon
 destinations:
-  - FUK  # Fukuoka
+  - FUK # Fukuoka
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -121,12 +153,17 @@ currency: USD
 max_stops: 2 # Set to null or remove to search all stops
 passengers: 1
 ```
+
 Each itinerary entry must use `outbound`/`inbound`. Each side accepts a string date, a list of dates, or a `{start, end}` range that expands one day at a time; every combination of expanded outbound/inbound dates is searched.
 
 ## Output format
+
 Each row contains these fields:
+
 - `origin_code`, `destination_code`: IATA codes for the searched pair.
 - `outbound_departure_at`, `return_departure_at`: normalized timestamps (local date/time parsed from Google Flights).
+- `outbound_departure_date`, `return_departure_date`: ISO dates (YYYY-MM-DD) for easier spreadsheet sorting.
+- `outbound_departure_time`, `return_departure_time`: local departure times in HH:MM.
 - `outbound_duration_hours`, `return_duration_hours`: decimal hour durations (e.g., 36.5 for 36h 30m).
 - `outbound_airline` / `return_airline`: carrier labels from Google Flights.
 - `outbound_stops`, `outbound_stop_notes` (and return equivalents): stop counts plus any layover airport IATA codes.
@@ -136,29 +173,37 @@ Each row contains these fields:
 - `round_trip_price`: lowest bundled fare from a Google Flights round-trip search.
 
 ## Project layout
+
 - `awesome_cheap_flights/cli.py`: CLI entry point used by the console script/uvx
 - `awesome_cheap_flights/__main__.py`: enables `python -m awesome_cheap_flights` invocations
 - `awesome_cheap_flights/pipeline.py`: reusable pipeline encapsulating scraping, combination, and CSV export
 
 ## Release automation
+
 Push to `main` triggers the `release` workflow automatically with a patch bump, build, publish, tag, and GitHub Release when changes touch `awesome_cheap_flights/*.py`, root-level `*.toml`, or `uv.lock`, and HEAD differs from the last release tag. Append `[minor]` to the end of the first commit subject line if you want that run to bump the minor version instead. Use the workflow_dispatch trigger when you need a manual run with `minor` or `current`. Provide a `PYPI_TOKEN` secret with publish rights. Select `current` to reuse the existing version number.
 
 ## README (한국어)
+
 ### 빠른 실행 (uvx)
+
 1. uv가 없다면 아래 설치 표를 참고해 설치한다.
 2. 다음 명령을 실행한다:
+
 ```bash
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
 ```
+
 3. 스프레드시트 앱에서 CSV를 열고 `total_price` 기준으로 정렬한다.
 
 `uvx`는 PyPI에서 게시된 패키지를 바로 받아오므로 클론이나 추가 설정이 필요 없다.
 
 ### uv 없이 온보딩
+
 1. macOS / Linux: `curl -Ls https://astral.sh/uv/install.sh | sh` 실행 후 새 셸에서 `uv --version`으로 설치를 확인한다.
 2. Windows (PowerShell): `powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"`를 실행한다.
 3. iOS / iPadOS: [iSH](https://ish.app/)에서 `apk add curl python3` 후 `curl -Ls https://astral.sh/uv/install.sh | sh`를 실행한다.
@@ -166,16 +211,19 @@ uvx awesome-cheap-flights@latest@latest \
 
 `uv`는 `~/.local/bin`에 설치된다. `uv`가 보이지 않으면 `source ~/.local/bin/env` 실행 후 `export PATH="$HOME/.local/bin:$PATH"`를 추가하라.
 
-
 pip이 더 익숙하면 한 번만 설치한 뒤 콘솔 스크립트를 사용한다:
+
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 설정 심화
+
 - 고급 옵션(요청 지연, 재시도 횟수, 구간별 제한)은 YAML에 있다.
-- CLI 옵션으로 **departures**, **destinations**, **itineraries**, **output CSV 경로**, `currency`, `passengers`, `max_stops`를 덮어쓸 수 있다.
+- CLI 옵션으로 **departures**, **destinations**, `--outbound`/`--inbound` 날짜, **output CSV 경로**, `currency`, `passengers`, `max_stops`를 덮어쓸 수 있다.
+- `--outbound`/`--inbound`에는 단일 날짜 또는 `시작:종료` 범위를 입력하면 조합이 자동으로 펼쳐진다.
 - `#`로 인라인 주석을 달아 공항 메모를 남길 수 있다.
 - 프로젝트 루트의 `config.yaml`이 자동으로 로드되며, 없으면 `--config`나 `AWESOME_CHEAP_FLIGHTS_CONFIG` 환경 변수를 사용한다.
 - `passengers`에 원하는 성인 좌석 수를 넣으면 된다(기본 1명).
@@ -186,11 +234,12 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 프록시가 필요하면 `http_proxy`(또는 `--http-proxy`)를 설정하고, 병렬 처리 개수는 `concurrency`(또는 `--concurrency`)로 조정한다.
 
 ### YAML 예시
+
 ```yaml
 departures:
-  - ICN  # Seoul Incheon
+  - ICN # Seoul Incheon
 destinations:
-  - FUK  # Fukuoka
+  - FUK # Fukuoka
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -206,11 +255,15 @@ currency: USD
 max_stops: 2 # null 이나 제거 시 모든 경유 검색
 passengers: 1
 ```
+
 각 여정 항목은 반드시 `outbound`/`inbound`를 사용해야 한다. 각 필드는 문자열 날짜, 날짜 목록, `{start, end}` 범위를 허용하며 범위는 하루씩 확장되어 가능한 조합을 모두 검색한다.
 
 ### 출력 포맷
+
 - `origin_code`, `destination_code`: 검색된 구간의 IATA 코드.
 - `outbound_departure_at`, `return_departure_at`: 구글플라이트에서 파싱한 현지 시각.
+- `outbound_departure_date`, `return_departure_date`: 스프레드시트 정렬에 맞춘 YYYY-MM-DD 날짜.
+- `outbound_departure_time`, `return_departure_time`: HH:MM 형식의 현지 출발 시각.
 - `outbound_airline` / `return_airline`: 구글플라이트에서 가져온 항공사 라벨.
 - `outbound_stops`, `outbound_stop_notes`(복귀편 포함): 경유 횟수와 경유 정보.
 - `outbound_price`, `return_price`: 편도 운임(숫자만).
@@ -219,28 +272,37 @@ passengers: 1
 - `round_trip_price`: 구글 왕복 검색에서 가져온 최저 번들 운임.
 
 ### 프로젝트 구성
+
 - `awesome_cheap_flights/cli.py`: 콘솔 스크립트와 uvx에서 사용하는 진입점.
 - `awesome_cheap_flights/__main__.py`: `python -m awesome_cheap_flights` 실행을 지원.
 - `awesome_cheap_flights/pipeline.py`: 스크레이핑, 조합, CSV 내보내기를 담당하는 파이프라인.
 
 ### 릴리스 자동화
+
 `main` 브랜치에 푸시하면서 `awesome_cheap_flights/*.py`, 루트의 `*.toml`, `uv.lock` 중 하나라도 수정되고 마지막 릴리스 태그와 커밋이 달라졌을 때만 `release` 워크플로가 자동으로 patch 버전을 올려서 빌드, `uvx --from twine twine upload`로 업로드, 태그/푸시, GitHub Release 생성까지 처리한다. 조건이 안 맞으면 릴리스는 스킵된다. `minor`나 `current`가 필요할 땐 workflow_dispatch를 수동 실행해라. 게시 권한이 있는 `PYPI_TOKEN` 시크릿을 제공해야 하며, current는 기존 버전 재사용이다.
+
 ## README (中文)
+
 ### 快速入门（uvx）
+
 1. 如果还没有安装 uv，请参考下方安装表进行安装。
 2. 运行以下命令：
+
 ```bash
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
 ```
+
 3. 在表格软件中打开 CSV，并按 `total_price` 排序。
 
 `uvx` 会直接从 PyPI 拉取已发布的包，无需克隆或额外配置。
 
 ### 无 uv 上手步骤
+
 1. macOS / Linux：`curl -Ls https://astral.sh/uv/install.sh | sh`，换新 Shell 后用 `uv --version` 确认。
 2. Windows (PowerShell)：`powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"`。
 3. iOS / iPadOS：安装 [iSH](https://ish.app/)，运行 `apk add curl python3` 后执行 `curl -Ls https://astral.sh/uv/install.sh | sh`。
@@ -249,14 +311,18 @@ uvx awesome-cheap-flights@latest@latest \
 `uv` 会安装在 `~/.local/bin`。若终端提示找不到命令，运行 `source ~/.local/bin/env` 并加入 `export PATH="$HOME/.local/bin:$PATH"`。
 
 如果更习惯 pip，可先安装再调用控制台脚本：
+
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 配置详解
+
 - 高级参数（请求延迟、重试次数、每段限制）在 YAML 中配置。
-- CLI 可覆盖 **departures**、**destinations**、**itineraries**、**输出 CSV 路径**、`currency`、`passengers`、`max_stops`。
+- CLI 可覆盖 **departures**、**destinations**、`--outbound`/`--inbound` 出入境日期、**输出 CSV 路径**、`currency`、`passengers`、`max_stops`。
+- `--outbound`/`--inbound` 可输入单日或 `起始:结束` 范围，系统会展开所有组合。
 - 使用 `#` 添加行内注释，方便记录机场信息。
 - 项目根目录的 `config.yaml` 会自动载入；若不存在，可使用 `--config` 或环境变量 `AWESOME_CHEAP_FLIGHTS_CONFIG`。
 - 将 `passengers` 设置为所需成人人数（默认 1）。
@@ -267,11 +333,12 @@ awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --it
 - 需要代理时可设置 `http_proxy`（或 `--http-proxy`），并用 `concurrency`（或 `--concurrency`）控制并行任务数量。
 
 ### YAML 示例
+
 ```yaml
 departures:
-  - ICN  # Seoul Incheon
+  - ICN # Seoul Incheon
 destinations:
-  - FUK  # Fukuoka
+  - FUK # Fukuoka
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -287,11 +354,15 @@ currency: USD
 max_stops: 2 # 设为 null 或删掉即可搜索所有经停
 passengers: 1
 ```
+
 每个行程必须使用 `outbound`/`inbound`。各字段支持单个日期、日期列表或 `{start, end}` 范围；范围会按天展开，遍历所有组合。
 
 ### 输出格式
+
 - `origin_code`、`destination_code`：查询航段的 IATA 代码。
 - `outbound_departure_at`、`return_departure_at`：从 Google Flights 解析出的本地时间。
+- `outbound_departure_date`、`return_departure_date`：利于表格排序的 YYYY-MM-DD 日期。
+- `outbound_departure_time`、`return_departure_time`：当地出发时间（HH:MM）。
 - `outbound_airline` / `return_airline`：Google Flights 的航司标签。
 - `outbound_stops`、`outbound_stop_notes`（返程同理）：经停次数与经停说明。
 - `outbound_price`、`return_price`：各航段票价（仅数字）。
@@ -300,29 +371,37 @@ passengers: 1
 - `round_trip_price`：Google 航班的往返查询返回的最低捆绑票价。
 
 ### 项目结构
+
 - `awesome_cheap_flights/cli.py`：控制台脚本与 uvx 的入口。
 - `awesome_cheap_flights/__main__.py`：支持 `python -m awesome_cheap_flights` 调用。
 - `awesome_cheap_flights/pipeline.py`：负责抓取、组合与导出 CSV 的核心管线。
 
 ### 发布自动化
+
 当推送到 `main` 且改动涉及 `awesome_cheap_flights/*.py`、仓库根目录下的 `*.toml` 或 `uv.lock`，并且 HEAD 与上一次发布标签指向的提交不同，`release` 工作流会自动以 patch 升级、构建、`uvx --from twine twine upload` 上传，并完成打标签、推送和创建 GitHub Release；否则会跳过。若需要 `minor` 或 `current`，使用 workflow_dispatch 手动运行。务必提供具有发布权限的 `PYPI_TOKEN` 机密；选择 `current` 可复用现有版本号。
 
 ## README (日本語)
+
 ### かんたんスタート（uvx）
+
 1. まだ uv を入れていない場合は下の表を参考にインストールする。
 2. 次のコマンドを実行する:
+
 ```bash
-uvx awesome-cheap-flights@latest@latest \
+uvx awesome-cheap-flights@latest \
   --output sample.csv \
   --departure ICN \
   --destination FUK \
-  --itinerary 2026-01-01:2026-01-04
+  --outbound 2026-01-01 \
+  --inbound 2026-01-04
 ```
+
 3. 表計算ソフトで CSV を開き、`total_price` でソートする。
 
 `uvx` は PyPI に公開済みのパッケージを直接取得するため、クローンや追加セットアップは不要。
 
 ### uv なしの導入手順
+
 1. macOS / Linux：`curl -Ls https://astral.sh/uv/install.sh | sh` を実行し、新しいシェルで `uv --version` を確認する。
 2. Windows (PowerShell)：`powershell -ExecutionPolicy Bypass -Command "iwr https://astral.sh/uv/install.ps1 -useb | iex"` を実行する。
 3. iOS / iPadOS：[iSH](https://ish.app/) で `apk add curl python3` を実行し、続けて `curl -Ls https://astral.sh/uv/install.sh | sh` を実行する。
@@ -331,29 +410,34 @@ uvx awesome-cheap-flights@latest@latest \
 `uv` は `~/.local/bin` に配置される。見つからない場合は `source ~/.local/bin/env` を実行し、`export PATH="$HOME/.local/bin:$PATH"` を追加する。
 
 pip を使いたい場合は一度インストールしてからコンソールスクリプトを呼び出す:
+
 ```bash
 pip install awesome-cheap-flights
-awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --itinerary 2026-01-01:2026-01-04
+awesome-cheap-flights --output sample.csv --departure ICN --destination FUK --outbound 2026-01-01 --inbound 2026-01-04
+awesome-cheap-flights --output sample-range.csv --departure ICN --destination FUK --outbound 2026-01-01:2026-01-03 --inbound 2026-01-05
 ```
 
 ### 設定の詳細
+
 - 高度なパラメータ（リクエスト遅延、リトライ回数、区間ごとの制限）は YAML で管理する。
-- CLI では **departures**、**destinations**、**itineraries**、**出力 CSV パス**、`currency`、`passengers`、`max_stops` を上書きできる。
+- CLI では **departures**、**destinations**、`--outbound`/`--inbound` の日付、**出力 CSV パス**、`currency`、`passengers`、`max_stops` を上書きできる。
+- `--outbound`/`--inbound` に単一日付または `開始:終了` 範囲を渡すと、全組み合わせが展開される。
 - `#` を使って行内コメントを追加し、空港メモを残せる。
 - プロジェクト直下の `config.yaml` が自動で読み込まれる。存在しない場合は `--config` か `AWESOME_CHEAP_FLIGHTS_CONFIG` 環境変数を利用する。
 - `passengers` に希望する大人人数を設定する（既定値 1）。
-- `max_stops` で各区間の経由回数を制限する（0=直行、1=1回、2=2回）。
+- `max_stops` で各区間の経由回数を制限する（0=直行、1=1 回、2=2 回）。
 - `max_stops` を `null` にするか項目自体を省けば全経由を検索する。
 - 実行中に `Ctrl+C` を押すと `draft-元ファイル名.csv` を保存し、残り件数を表示する。
 - `output_path` を省略すると `output/<ローカルタイムスタンプ>_<TZ>.csv` が自動生成される。
 - プロキシが必要なら `http_proxy`（または `--http-proxy`）を設定し、併行実行数は `concurrency`（または `--concurrency`）で調整する。
 
 ### YAML サンプル
+
 ```yaml
 departures:
-  - ICN  # Seoul Incheon
+  - ICN # Seoul Incheon
 destinations:
-  - FUK  # Fukuoka
+  - FUK # Fukuoka
 itineraries:
   - outbound: 2026-01-01
     inbound: 2026-01-03
@@ -369,11 +453,15 @@ currency: USD
 max_stops: 2 # null にするか削除すると全経由を探索
 passengers: 1
 ```
+
 各行程は必ず `outbound`/`inbound` を指定する。フィールドには単一日付、日付リスト、`{start, end}` 範囲が使え、範囲は日単位で展開されて全組み合わせを検索する。
 
 ### 出力フォーマット
+
 - `origin_code`、`destination_code`: 検索区間の IATA コード。
 - `outbound_departure_at`、`return_departure_at`: Google Flights から解析した現地日時。
+- `outbound_departure_date`、`return_departure_date`: スプレッドシート向けの YYYY-MM-DD 日付。
+- `outbound_departure_time`、`return_departure_time`: HH:MM 形式の現地出発時刻。
 - `outbound_airline` / `return_airline`: Google Flights の航空会社ラベル。
 - `outbound_stops`、`outbound_stop_notes`（復路も同様）: 経由回数と経由情報。
 - `outbound_price`、`return_price`: 各区間の運賃（数字のみ）。
@@ -382,11 +470,13 @@ passengers: 1
 - `round_trip_price`: Google Flights の往復検索で得た最安バンドル運賃。
 
 ### プロジェクト構成
+
 - `awesome_cheap_flights/cli.py`: コンソールスクリプトと uvx のエントリーポイント。
 - `awesome_cheap_flights/__main__.py`: `python -m awesome_cheap_flights` の実行を可能にする。
 - `awesome_cheap_flights/pipeline.py`: スクレイピング、組み合わせ、CSV 出力を担うパイプライン。
 
 ### リリース自動化
+
 `awesome_cheap_flights/*.py`、リポジトリ直下の `*.toml`、`uv.lock` いずれかに変更を含み、直近のリリースタグが指すコミットと HEAD が異なる `main` ブランチへのプッシュで `release` ワークフローが自動実行され、patch バージョンへ更新・ビルドし、`uvx --from twine twine upload` で公開、タグ付けとプッシュ、GitHub Release まで行う。条件を満たさない場合はスキップされる。`minor` や `current` が必要な場合は workflow_dispatch を手動起動すること。公開権限付きの `PYPI_TOKEN` シークレットを必ず設定し、current を選ぶと既存バージョンを再利用できる。
 
-Last commit id: f1cf706a1907e62ae0114a068b3c5ff40c06d25d
+Last commit id: b40f52de85515298de193e98a704685f6a85b7dc

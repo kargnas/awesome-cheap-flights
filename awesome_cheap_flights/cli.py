@@ -183,7 +183,54 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
 
     departures = normalize_departures(departures_raw)
     destinations = normalize_destinations(destinations_raw)
-    itineraries = normalize_itineraries(itineraries_raw)
+    itineraries: List[Tuple[str, str]] = []
+
+    def _parse_cli_dates(entries: Iterable[str], *, label: str) -> List[str]:
+        seen: set[str] = set()
+        ordered: List[str] = []
+        for raw_entry in entries:
+            token = strip_comment(raw_entry)
+            if not token:
+                continue
+            for chunk in token.split(","):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                if ":" in chunk:
+                    start_raw, end_raw = (part.strip() for part in chunk.split(":", 1))
+                    if not start_raw or not end_raw:
+                        raise ValueError(f"Invalid {label} range: {chunk}")
+                    start_date = datetime.strptime(start_raw, DATE_FMT).date()
+                    end_date = datetime.strptime(end_raw, DATE_FMT).date()
+                    if end_date < start_date:
+                        raise ValueError(f"{label.title()} range end must be on or after start")
+                    current = start_date
+                    while current <= end_date:
+                        value = current.strftime(DATE_FMT)
+                        if value not in seen:
+                            seen.add(value)
+                            ordered.append(value)
+                        current += timedelta(days=1)
+                    continue
+                datetime.strptime(chunk, DATE_FMT)
+                if chunk not in seen:
+                    seen.add(chunk)
+                    ordered.append(chunk)
+        return ordered
+
+    outbound_cli = args.outbound or []
+    inbound_cli = args.inbound or []
+
+    if outbound_cli or inbound_cli:
+        if not outbound_cli or not inbound_cli:
+            raise ValueError("Both outbound and inbound must be provided when overriding via CLI")
+        outbound_options = _parse_cli_dates(outbound_cli, label="outbound")
+        inbound_options = _parse_cli_dates(inbound_cli, label="inbound")
+        if not outbound_options or not inbound_options:
+            raise ValueError("Outbound and inbound overrides must yield at least one date each")
+        itineraries = [(outbound, inbound) for outbound in outbound_options for inbound in inbound_options]
+    else:
+        itineraries = normalize_itineraries(itineraries_raw)
 
     if not departures:
         raise ValueError("At least one departure code must be provided")
@@ -309,6 +356,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--itinerary",
         action="append",
         help="Travel date pair (repeatable). Accepts 'YYYY-MM-DD:YYYY-MM-DD' or YAML-style dict",
+    )
+    parser.add_argument(
+        "--outbound",
+        action="append",
+        help="Outbound departure dates or ranges (comma-separated or start:end)",
+    )
+    parser.add_argument(
+        "--inbound",
+        action="append",
+        help="Inbound return dates or ranges (comma-separated or start:end)",
     )
     parser.add_argument(
         "--output",
