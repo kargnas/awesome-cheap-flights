@@ -1,30 +1,36 @@
-# Sample configuration for awesome-cheap-flights (lightweight for tests)
-currency: USD
-# currency: KRW # Korean Won
-# currency: JPY # Japanese Yen
-# currency: CNY # Chinese Yuan
-
-departures:
-  - ICN # Seoul Incheon
-
-destinations:
-  - GMP # Fukuoka
-  - HKG # Hong Kong
-
-itineraries:
-  - outbound:
-      start: 2026-01-01
-      end: 2026-01-02
-    inbound: 2026-01-04
-  - outbound: 2026-01-05
-    inbound: 2026-01-10
-
-# Optional: omit this key to default to output/<local timestamp>_<TZ>.csv
-output_path: output/sample.csv
-request_delay: 0.5
-max_retries: 1
-max_leg_results: 3
-max_stops: 2 # 0=nonstop, 1=one stop, 2=two stops (set null or remove for unlimited)
-passengers: 1 # Total adult passengers
-# http_proxy: http://127.0.0.1:8080
-# concurrency: 2
+schema_version: v2
+defaults:
+  currency: USD
+  passengers: 1
+  request:
+    delay: 0.5
+    retries: 1
+    max_leg_results: 3
+  filters:
+    max_stops: 1
+    include_hidden: true
+    max_hidden_hops: 1
+  output:
+    directory: output
+    filename_pattern: "{plan}_{timestamp}.csv"
+plans:
+  - name: sample-hop
+    places:
+      home: [ICN]
+      city: [FUK, HKG]
+    path: [home, city, home]
+    departures:
+      "home->city":
+        dates: ["2026-01-01", "2026-01-02"]
+      "city->home":
+        window:
+          start: "2026-01-04"
+          end: "2026-01-05"
+    filters:
+      "home->city":
+        max_stops: 0
+    options:
+      include_hidden: true
+      max_hidden_hops: 1
+http_proxy: null
+concurrency: 1

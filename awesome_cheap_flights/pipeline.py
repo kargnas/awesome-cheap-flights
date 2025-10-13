@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import csv
 import json
 import re
@@ -5,9 +7,10 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
+from itertools import product
 from pathlib import Path
 from threading import Lock
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from fast_flights import FlightData, Passengers, Result
 from fast_flights.core import parse_response
@@ -44,7 +47,14 @@ console = Console(stderr=True, highlight=False)
 
 
 class ProgressReporter:
-    def __init__(self, total_steps: int, *, config: Optional["SearchConfig"] = None) -> None:
+    def __init__(
+        self,
+        total_steps: int,
+        *,
+        config: Optional["SearchConfig"] = None,
+        plan: Optional[PlanConfig] = None,
+        output_path: Optional[Path] = None,
+    ) -> None:
         self.total_steps = total_steps
         self.rows_collected = 0
         self.processed = 0
@@ -53,6 +63,8 @@ class ProgressReporter:
         self._progress: Optional[Progress] = None
         self._start = time.perf_counter()
         self._config = config
+        self._plan = plan
+        self._output_path = output_path
         self._lock = Lock()
 
     def __enter__(self) -> "ProgressReporter":
@@ -137,30 +149,28 @@ class ProgressReporter:
         console.print(table)
 
     def _render_overview(self) -> None:
-        if self._config is None:
+        if self._config is None or self._plan is None:
             return
-        origins = ", ".join(sorted(self._config.origins.values())) or "-"
-        destinations = ", ".join(dest.get("iata", "?") for dest in self._config.destinations) or "-"
-        total_pairs = (
-            len(self._config.origins)
-            * len(self._config.destinations)
-            * len(self._config.itineraries)
-        )
         table = Table(title="Search Overview", box=box.SIMPLE_HEAD)
         table.add_column("Field", justify="left")
         table.add_column("Value", justify="right")
-        table.add_row("Origins", origins)
-        table.add_row("Destinations", destinations)
+        table.add_row("Plan", self._plan.name)
+        table.add_row("Path", " → ".join(self._plan.path))
+        table.add_row("Journeys", str(self.total_steps))
         table.add_row("Passengers", str(self._config.passenger_count))
         table.add_row("Currency", self._config.currency_code)
-        max_stops_label = "All" if self._config.max_stops is None else str(self._config.max_stops)
-        table.add_row("Max stops", max_stops_label)
-        table.add_row("Max leg results", str(self._config.max_leg_results))
-        table.add_row("Request delay", f"{self._config.request_delay:.2f}s")
-        table.add_row("Retry limit", str(self._config.max_retries))
+        default_max = self._config.filters.max_stops
+        max_label = "All" if default_max is None else str(default_max)
+        table.add_row("Default max stops", max_label)
+        table.add_row("Include hidden", "yes" if self._plan.options.include_hidden else "no")
+        table.add_row("Hidden hop limit", str(self._plan.options.max_hidden_hops))
+        table.add_row("Max leg results", str(self._config.request.max_leg_results))
+        table.add_row("Request delay", f"{self._config.request.delay:.2f}s")
+        table.add_row("Retry limit", str(self._config.request.retries))
         table.add_row("Concurrency", str(self._config.concurrency))
         table.add_row("HTTP proxy", self._config.http_proxy or "-")
-        table.add_row("Total itineraries", str(total_pairs))
+        if self._output_path is not None:
+            table.add_row("Output", escape(str(self._output_path)))
         console.print(table)
 
 
@@ -168,13 +178,17 @@ class RunInterrupted(Exception):
     def __init__(
         self,
         *,
-        rows: List["ItineraryRow"],
+        plan: PlanConfig,
+        output_path: Path,
+        rows: List[SegmentRow],
         processed: int,
         skipped: int,
         collected: int,
         total: int,
     ) -> None:
         super().__init__("Search interrupted by user")
+        self.plan = plan
+        self.output_path = output_path
         self.rows = rows
         self.processed = processed
         self.skipped = skipped
@@ -304,30 +318,34 @@ def _get_flights_from_filter(
         raise exc
 
 @dataclass
-class SearchConfig:
-    origins: Dict[str, str]
-    destinations: Sequence[Dict[str, str]]
-    itineraries: Sequence[Tuple[str, str]]
-    output_path: Path
-    request_delay: float = 1.0
-    max_retries: int = 2
+class RequestSettings:
+    delay: float = 1.0
+    retries: int = 2
     max_leg_results: int = 10
-    currency_code: str = "USD"
-    passenger_count: int = 1
-    max_stops: Optional[int] = None
-    http_proxy: Optional[str] = None
-    concurrency: int = 1
-    debug: bool = False
 
     def __post_init__(self) -> None:
-        self.output_path = Path(self.output_path)
-        self.currency_code = self.currency_code.upper()
+        self.delay = float(self.delay)
         try:
-            self.passenger_count = int(self.passenger_count)
+            self.retries = int(self.retries)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid passenger count: {self.passenger_count}") from exc
-        if self.passenger_count < 1:
-            raise ValueError("Passenger count must be at least 1")
+            raise ValueError(f"Invalid retry count: {self.retries}") from exc
+        if self.retries < 1:
+            raise ValueError("Retry count must be at least 1")
+        try:
+            self.max_leg_results = int(self.max_leg_results)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid max leg results: {self.max_leg_results}") from exc
+        if self.max_leg_results < 1:
+            raise ValueError("Max leg results must be at least 1")
+
+
+@dataclass
+class FilterSettings:
+    max_stops: Optional[int] = None
+    include_hidden: bool = True
+    max_hidden_hops: int = 1
+
+    def __post_init__(self) -> None:
         if self.max_stops is not None:
             try:
                 self.max_stops = int(self.max_stops)
@@ -335,6 +353,113 @@ class SearchConfig:
                 raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
             if self.max_stops < 0 or self.max_stops > 2:
                 raise ValueError("Max stops must be between 0 and 2")
+        self.include_hidden = bool(self.include_hidden)
+        try:
+            self.max_hidden_hops = int(self.max_hidden_hops)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid hidden hop limit: {self.max_hidden_hops}") from exc
+        if self.max_hidden_hops < 0 or self.max_hidden_hops > 2:
+            raise ValueError("Hidden hop limit must be between 0 and 2")
+
+
+@dataclass
+class OutputSettings:
+    directory: Path = Path("output")
+    filename_pattern: str = "{timestamp}_{plan}.csv"
+
+    def __post_init__(self) -> None:
+        self.directory = Path(self.directory)
+        pattern = str(self.filename_pattern)
+        if "{plan}" not in pattern:
+            pattern = f"{{plan}}_{pattern}"
+        if "{timestamp}" not in pattern:
+            pattern = f"{pattern}_{{timestamp}}"
+        if not pattern.endswith(".csv"):
+            pattern = f"{pattern}.csv"
+        self.filename_pattern = pattern
+
+
+@dataclass
+class LegFilter:
+    max_stops: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.max_stops is None:
+            return
+        try:
+            self.max_stops = int(self.max_stops)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
+        if self.max_stops < 0 or self.max_stops > 2:
+            raise ValueError("Max stops must be between 0 and 2")
+
+
+@dataclass
+class PlanOptions:
+    include_hidden: bool
+    max_hidden_hops: int
+
+    def __post_init__(self) -> None:
+        self.include_hidden = bool(self.include_hidden)
+        try:
+            self.max_hidden_hops = int(self.max_hidden_hops)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid hidden hop limit: {self.max_hidden_hops}") from exc
+        if self.max_hidden_hops < 0 or self.max_hidden_hops > 2:
+            raise ValueError("Hidden hop limit must be between 0 and 2")
+
+
+@dataclass
+class PlanOutput:
+    directory: Optional[Path] = None
+    filename_pattern: Optional[str] = None
+    filename: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.directory is not None:
+            self.directory = Path(self.directory)
+        if self.filename is not None and not str(self.filename).endswith(".csv"):
+            self.filename = f"{self.filename}.csv"
+
+
+@dataclass
+class PlanConfig:
+    name: str
+    places: Dict[str, List[str]]
+    path: List[str]
+    departures: Dict[Tuple[str, str], List[str]]
+    options: PlanOptions
+    filters: Dict[Tuple[str, str], LegFilter]
+    output: Optional[PlanOutput] = None
+
+
+@dataclass
+class PlanExecution:
+    assignment: Dict[str, str]
+    departures: Dict[Tuple[str, str], str]
+
+
+@dataclass
+class SearchConfig:
+    schema_version: str
+    currency_code: str
+    passenger_count: int
+    request: RequestSettings
+    filters: FilterSettings
+    output: OutputSettings
+    http_proxy: Optional[str]
+    concurrency: int
+    debug: bool
+    plans: Sequence[PlanConfig]
+
+    def __post_init__(self) -> None:
+        self.currency_code = str(self.currency_code or "USD").upper()
+        try:
+            self.passenger_count = int(self.passenger_count)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid passenger count: {self.passenger_count}") from exc
+        if self.passenger_count < 1:
+            raise ValueError("Passenger count must be at least 1")
         try:
             self.concurrency = int(self.concurrency)
         except (TypeError, ValueError) as exc:
@@ -342,6 +467,8 @@ class SearchConfig:
         if self.concurrency < 1:
             raise ValueError("Concurrency must be at least 1")
         self.debug = bool(self.debug)
+        if not self.plans:
+            raise ValueError("At least one plan must be provided")
 
 
 @dataclass
@@ -356,30 +483,35 @@ class LegFlight:
 
 
 @dataclass
-class ItineraryRow:
+class SegmentRow:
+    plan_name: str
+    journey_id: str
+    journey_label: str
+    variant: str
+    leg_sequence: int
+    origin_place: str
     origin_code: str
+    destination_place: str
     destination_code: str
-    outbound_departure_at: str
-    outbound_departure_date: str
-    outbound_departure_time: str
-    outbound_duration_hours: Optional[float]
-    return_departure_at: str
-    return_departure_date: str
-    return_departure_time: str
-    return_duration_hours: Optional[float]
-    outbound_airline: str
-    outbound_stops: str
-    outbound_stop_notes: str
-    outbound_price: Optional[int]
-    outbound_is_best: bool
-    return_airline: str
-    return_stops: str
-    return_stop_notes: str
-    return_price: Optional[int]
-    return_is_best: bool
-    total_price: Optional[int]
+    hidden_via_places: str
+    hidden_via_codes: str
+    departure_date: str
+    departure_at: str
+    departure_time: str
+    duration_hours: Optional[float]
+    airline: str
+    stops: str
+    stop_notes: str
+    price: Optional[int]
+    is_best: bool
     currency: str
-    round_trip_price: Optional[int]
+
+
+@dataclass
+class PlanRunResult:
+    plan: PlanConfig
+    output_path: Path
+    rows: List[SegmentRow]
 
 
 def standardize_time(raw: str, year_hint: int) -> str:
@@ -537,80 +669,6 @@ def fetch_leg_html(
             return ""
 
 
-def fetch_round_trip_price(
-    *,
-    config: SearchConfig,
-    origin_code: str,
-    destination_code: str,
-    departure_date: str,
-    return_date: str,
-    max_stops: Optional[int],
-    reporter: Optional[ProgressReporter] = None,
-) -> Optional[int]:
-    last_exc: Optional[Exception] = None
-    for attempt in range(1, config.max_retries + 1):
-        try:
-            flight_data = [
-                FlightData(
-                    date=departure_date,
-                    from_airport=origin_code,
-                    to_airport=destination_code,
-                ),
-                FlightData(
-                    date=return_date,
-                    from_airport=destination_code,
-                    to_airport=origin_code,
-                ),
-            ]
-            filter_payload = TFSData.from_interface(
-                flight_data=flight_data,
-                trip="round-trip",
-                passengers=Passengers(adults=config.passenger_count),
-                seat="economy",
-                max_stops=max_stops,
-            )
-            result = _get_flights_from_filter(
-                filter_payload,
-                currency=config.currency_code,
-                mode="common",
-                proxy=config.http_proxy,
-            )
-            best_price: Optional[int] = None
-            for flight in result.flights:
-                price_value = parse_price_to_int(flight.price)
-                if price_value is None:
-                    continue
-                if best_price is None or price_value < best_price:
-                    best_price = price_value
-            return best_price
-        except Exception as exc:  # noqa: BLE001
-            last_exc = exc
-            wait_time = config.request_delay * attempt
-            detail = _friendly_exception(exc, debug=config.debug)
-            hint = _debug_hint(config.debug)
-            _warn(
-                (
-                    f"Round-trip fail {origin_code}->{destination_code} "
-                    f"{departure_date}/{return_date} try {attempt}: {detail}{hint}"
-                ),
-                reporter,
-            )
-            if attempt < config.max_retries:
-                time.sleep(wait_time)
-    if last_exc:
-        _warn(
-            (
-                f"Round-trip skip {origin_code}->{destination_code} "
-                f"{departure_date}/{return_date} after {config.max_retries} tries"
-            ),
-            reporter,
-        )
-        detail = _friendly_exception(last_exc, debug=config.debug)
-        hint = _debug_hint(config.debug)
-        _error(f"Round-trip last error: {detail}{hint}", reporter)
-    return None
-
-
 def fetch_leg_flights(
     *,
     config: SearchConfig,
@@ -624,7 +682,7 @@ def fetch_leg_flights(
     result: Optional[Result] = None
     layover_lookup: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
 
-    for attempt in range(1, config.max_retries + 1):
+    for attempt in range(1, config.request.retries + 1):
         try:
             flight_data = build_flight_data(origin_code, destination_code, departure_date)
             filter_payload = TFSData.from_interface(
@@ -654,7 +712,7 @@ def fetch_leg_flights(
             break
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
-            wait_time = config.request_delay * attempt
+            wait_time = config.request.delay * attempt
             detail = _friendly_exception(exc, debug=config.debug)
             hint = _debug_hint(config.debug)
             _warn(
@@ -664,7 +722,7 @@ def fetch_leg_flights(
                 ),
                 reporter,
             )
-            if attempt < config.max_retries:
+            if attempt < config.request.retries:
                 time.sleep(wait_time)
 
     if result is None:
@@ -672,7 +730,7 @@ def fetch_leg_flights(
             _warn(
                 (
                     f"Leg skip {origin_code}->{destination_code} "
-                    f"{departure_date} after {config.max_retries} tries"
+                    f"{departure_date} after {config.request.retries} tries"
                 ),
                 reporter,
             )
@@ -686,7 +744,7 @@ def fetch_leg_flights(
     base_year = int(departure_date.split("-", 1)[0])
 
     for flight in result.flights:
-        if len(flights) >= config.max_leg_results:
+        if len(flights) >= config.request.max_leg_results:
             break
         key = (flight.name, flight.departure, flight.price)
         if key in seen:
@@ -712,107 +770,394 @@ def fetch_leg_flights(
     return flights
 
 
-def build_itineraries(
+def _iter_edges(path: Sequence[str]) -> List[Tuple[str, str]]:
+    return [(path[idx], path[idx + 1]) for idx in range(len(path) - 1)]
+
+
+def _iter_hidden_pairs(path: Sequence[str]) -> Iterable[Tuple[int, int]]:
+    for start in range(len(path) - 2):
+        for end in range(start + 2, len(path)):
+            yield start, end
+
+
+def _slugify_plan_name(value: str) -> str:
+    if not value:
+        return "plan"
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip().lower()).strip("-")
+    return slug or "plan"
+
+
+def _resolve_plan_output_path(config: SearchConfig, plan: PlanConfig) -> Path:
+    directory = config.output.directory
+    pattern = config.output.filename_pattern
+    filename_override: Optional[str] = None
+    if plan.output is not None:
+        if plan.output.directory is not None:
+            directory = plan.output.directory
+        if plan.output.filename is not None:
+            filename_override = plan.output.filename
+        elif plan.output.filename_pattern is not None:
+            pattern = plan.output.filename_pattern
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    plan_token = _slugify_plan_name(plan.name)
+    if filename_override is not None:
+        filename = filename_override.format(plan=plan_token, timestamp=timestamp)
+    else:
+        filename = pattern.format(plan=plan_token, timestamp=timestamp)
+    return Path(directory) / filename
+
+
+def _build_journey_label(plan: PlanConfig, execution: PlanExecution) -> str:
+    path_tokens = [f"{place}({execution.assignment.get(place, '?')})" for place in plan.path]
+    edges = _iter_edges(plan.path)
+    date_tokens = [execution.departures.get(edge, "?") for edge in edges]
+    if date_tokens:
+        return f"{' → '.join(path_tokens)} [{', '.join(date_tokens)}]"
+    return " → ".join(path_tokens)
+
+
+def _build_progress_label(
+    plan: PlanConfig,
+    execution: PlanExecution,
+    *,
+    journey_index: int,
+    total: int,
+    config: SearchConfig,
+) -> str:
+    origin_code = execution.assignment.get(plan.path[0], "?") if plan.path else "?"
+    destination_code = execution.assignment.get(plan.path[-1], "?") if plan.path else "?"
+    edges = _iter_edges(plan.path)
+    first_edge = edges[0] if edges else None
+    first_date = execution.departures.get(first_edge, "?") if first_edge else "?"
+    return (
+        f"{plan.name} #{journey_index}/{total} "
+        f"{origin_code}->{destination_code} {first_date} · "
+        f"{config.passenger_count} pax · {config.currency_code}"
+    )
+
+
+def _resolve_leg_max_stops(
+    config: SearchConfig,
+    plan: PlanConfig,
+    origin_place: str,
+    destination_place: str,
+    *,
+    hidden: bool,
+) -> Optional[int]:
+    if hidden:
+        limit = plan.options.max_hidden_hops
+        global_limit = config.filters.max_hidden_hops
+        if global_limit is not None:
+            limit = min(limit, global_limit)
+        return limit
+    override = plan.filters.get((origin_place, destination_place))
+    if override and override.max_stops is not None:
+        return override.max_stops
+    return config.filters.max_stops
+
+
+def _flight_contains_codes(flight: LegFlight, codes: Sequence[str]) -> bool:
+    if not codes:
+        return True
+    haystack = f"{flight.stop_notes} {flight.stops}"
+    found = {token.upper() for token in extract_stop_codes(haystack).split() if token}
+    return all(code.upper() in found for code in codes)
+
+
+def _build_segment_rows(
     *,
     config: SearchConfig,
+    plan: PlanConfig,
+    journey_id: str,
+    journey_label: str,
+    variant: str,
+    leg_sequence: int,
+    origin_place: str,
     origin_code: str,
-    destination: Dict[str, str],
-    departure_date: str,
-    return_date: str,
-    reporter: Optional[ProgressReporter] = None,
-) -> List[ItineraryRow]:
-    outbound_flights = fetch_leg_flights(
-        config=config,
-        origin_code=origin_code,
-        destination_code=destination["iata"],
-        departure_date=departure_date,
-        max_stops=config.max_stops,
-        reporter=reporter,
-    )
-    time.sleep(config.request_delay)
-    return_flights = fetch_leg_flights(
-        config=config,
-        origin_code=destination["iata"],
-        destination_code=origin_code,
-        departure_date=return_date,
-        max_stops=config.max_stops,
-        reporter=reporter,
-    )
-    time.sleep(config.request_delay)
-    round_trip_price = fetch_round_trip_price(
-        config=config,
-        origin_code=origin_code,
-        destination_code=destination["iata"],
-        departure_date=departure_date,
-        return_date=return_date,
-        max_stops=config.max_stops,
-        reporter=reporter,
-    )
-
-    if not outbound_flights or not return_flights:
-        _warn(
-            (
-                f"Itinerary skip {origin_code}->{destination['iata']} "
-                f"{departure_date}/{return_date}: empty leg"
-            ),
-            reporter,
+    destination_place: str,
+    destination_code: str,
+    departure_date_hint: str,
+    flights: Sequence[LegFlight],
+    via_places: Sequence[str],
+    via_codes: Sequence[str],
+) -> List[SegmentRow]:
+    rows: List[SegmentRow] = []
+    via_place_label = " → ".join(via_places)
+    via_code_label = " → ".join(via_codes)
+    for flight in flights:
+        departure_date, departure_time = split_datetime_components(flight.departure_at)
+        rows.append(
+            SegmentRow(
+                plan_name=plan.name,
+                journey_id=journey_id,
+                journey_label=journey_label,
+                variant=variant,
+                leg_sequence=leg_sequence,
+                origin_place=origin_place,
+                origin_code=origin_code,
+                destination_place=destination_place,
+                destination_code=destination_code,
+                hidden_via_places=via_place_label,
+                hidden_via_codes=via_code_label,
+                departure_date=departure_date or departure_date_hint,
+                departure_at=flight.departure_at,
+                departure_time=departure_time,
+                duration_hours=flight.duration_hours,
+                airline=flight.airline_name,
+                stops=flight.stops,
+                stop_notes=flight.stop_notes,
+                price=flight.price,
+                is_best=flight.is_best,
+                currency=config.currency_code,
+            )
         )
-        return []
+    return rows
 
-    rows: List[ItineraryRow] = []
 
-    for outbound in outbound_flights:
-        for inbound in return_flights:
-            total_price: Optional[int] = None
-            if outbound.price is not None and inbound.price is not None:
-                total_price = outbound.price + inbound.price
-            outbound_date, outbound_time = split_datetime_components(outbound.departure_at)
-            return_date, return_time = split_datetime_components(inbound.departure_at)
-            rows.append(
-                ItineraryRow(
+def collect_segments_for_execution(
+    *,
+    config: SearchConfig,
+    plan: PlanConfig,
+    execution: PlanExecution,
+    journey_index: int,
+    journey_label: str,
+    reporter: Optional[ProgressReporter],
+) -> List[SegmentRow]:
+    rows: List[SegmentRow] = []
+    edges = _iter_edges(plan.path)
+    journey_id = f"{_slugify_plan_name(plan.name)}-{journey_index:04d}"
+
+    for seq_index, (origin_place, destination_place) in enumerate(edges):
+        origin_code = execution.assignment.get(origin_place)
+        destination_code = execution.assignment.get(destination_place)
+        if not origin_code or not destination_code:
+            _warn(f"Missing airport code for {origin_place}->{destination_place}", reporter)
+            continue
+        departure_date = execution.departures.get((origin_place, destination_place))
+        if not departure_date:
+            _warn(
+                f"Missing departure date for {origin_place}->{destination_place}",
+                reporter,
+            )
+            continue
+        max_stops = _resolve_leg_max_stops(
+            config,
+            plan,
+            origin_place,
+            destination_place,
+            hidden=False,
+        )
+        flights = fetch_leg_flights(
+            config=config,
+            origin_code=origin_code,
+            destination_code=destination_code,
+            departure_date=departure_date,
+            max_stops=max_stops,
+            reporter=reporter,
+        )
+        rows.extend(
+            _build_segment_rows(
+                config=config,
+                plan=plan,
+                journey_id=journey_id,
+                journey_label=journey_label,
+                variant="scheduled",
+                leg_sequence=seq_index,
+                origin_place=origin_place,
+                origin_code=origin_code,
+                destination_place=destination_place,
+                destination_code=destination_code,
+                departure_date_hint=departure_date,
+                flights=flights,
+                via_places=(),
+                via_codes=(),
+            )
+        )
+        if config.request.delay:
+            time.sleep(config.request.delay)
+
+    if plan.options.include_hidden:
+        hidden_offset = len(edges)
+        for hidden_index, (start_idx, end_idx) in enumerate(_iter_hidden_pairs(plan.path)):
+            origin_place = plan.path[start_idx]
+            destination_place = plan.path[end_idx]
+            via_places = plan.path[start_idx + 1 : end_idx]
+            if not via_places:
+                continue
+            origin_code = execution.assignment.get(origin_place)
+            destination_code = execution.assignment.get(destination_place)
+            via_codes = [execution.assignment.get(place, "") for place in via_places]
+            if not origin_code or not destination_code or any(not code for code in via_codes):
+                _warn(
+                    f"Missing code for hidden path {origin_place}->{destination_place}",
+                    reporter,
+                )
+                continue
+            first_edge = (plan.path[start_idx], plan.path[start_idx + 1])
+            departure_date = execution.departures.get(first_edge)
+            if not departure_date:
+                _warn(
+                    f"Missing departure date for hidden path {origin_place}->{destination_place}",
+                    reporter,
+                )
+                continue
+            hidden_limit = _resolve_leg_max_stops(
+                config,
+                plan,
+                origin_place,
+                destination_place,
+                hidden=True,
+            )
+            if hidden_limit <= 0:
+                continue
+            flights = fetch_leg_flights(
+                config=config,
+                origin_code=origin_code,
+                destination_code=destination_code,
+                departure_date=departure_date,
+                max_stops=hidden_limit,
+                reporter=reporter,
+            )
+            filtered = [
+                flight
+                for flight in flights
+                if _flight_contains_codes(flight, via_codes)
+            ]
+            rows.extend(
+                _build_segment_rows(
+                    config=config,
+                    plan=plan,
+                    journey_id=journey_id,
+                    journey_label=journey_label,
+                    variant="hidden",
+                    leg_sequence=hidden_offset + hidden_index,
+                    origin_place=origin_place,
                     origin_code=origin_code,
-                    destination_code=destination["iata"],
-                    outbound_departure_at=outbound.departure_at,
-                    outbound_departure_date=outbound_date,
-                    outbound_departure_time=outbound_time,
-                    outbound_duration_hours=outbound.duration_hours,
-                    return_departure_at=inbound.departure_at,
-                    return_departure_date=return_date,
-                    return_departure_time=return_time,
-                    return_duration_hours=inbound.duration_hours,
-                    outbound_airline=outbound.airline_name,
-                    outbound_stops=outbound.stops,
-                    outbound_stop_notes=outbound.stop_notes,
-                    outbound_price=outbound.price,
-                    outbound_is_best=outbound.is_best,
-                    return_airline=inbound.airline_name,
-                    return_stops=inbound.stops,
-                    return_stop_notes=inbound.stop_notes,
-                    return_price=inbound.price,
-                    return_is_best=inbound.is_best,
-                    total_price=total_price,
-                    currency=config.currency_code,
-                    round_trip_price=None,
+                    destination_place=destination_place,
+                    destination_code=destination_code,
+                    departure_date_hint=departure_date,
+                    flights=filtered,
+                    via_places=via_places,
+                    via_codes=via_codes,
                 )
             )
-    if rows and round_trip_price is not None:
-        best_index: Optional[int] = None
-        best_value: Optional[int] = None
-        for idx, row in enumerate(rows):
-            if row.total_price is None:
-                continue
-            if best_value is None or row.total_price < best_value:
-                best_index = idx
-                best_value = row.total_price
-        if best_index is None:
-            best_index = 0
-        rows[best_index].round_trip_price = round_trip_price
+            if config.request.delay:
+                time.sleep(config.request.delay)
 
     return rows
 
 
+def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
+    if len(plan.path) < 2:
+        raise ValueError(f"Plan '{plan.name}' requires at least two path entries")
+    for place in plan.path:
+        if place not in plan.places:
+            raise ValueError(f"Plan '{plan.name}' is missing place '{place}' definition")
+    for key, codes in plan.places.items():
+        if not codes:
+            raise ValueError(f"Plan '{plan.name}' place '{key}' has no airport codes")
+
+    output_path = _resolve_plan_output_path(config, plan)
+    edges = _iter_edges(plan.path)
+    date_lists = [plan.departures.get(edge, []) for edge in edges]
+    for edge, dates in zip(edges, date_lists):
+        if not dates:
+            raise ValueError(
+                f"Plan '{plan.name}' missing departure dates for {edge[0]}->{edge[1]}"
+            )
+
+    place_keys = list(plan.places.keys())
+    code_options = [plan.places[key] for key in place_keys]
+    executions: List[PlanExecution] = []
+    for codes in product(*code_options):
+        assignment = dict(zip(place_keys, codes))
+        for date_combo in product(*date_lists):
+            departures = {edge: date for edge, date in zip(edges, date_combo)}
+            executions.append(PlanExecution(assignment=assignment, departures=departures))
+
+    total_steps = len(executions)
+    rows: List[SegmentRow] = []
+    with ProgressReporter(total_steps, config=config, plan=plan, output_path=output_path) as reporter:
+        executor_ref: Optional[ThreadPoolExecutor] = None
+        futures_map: Optional[Dict[Future, Tuple[int, PlanExecution, str, str]]] = None
+        tasks: List[Tuple[int, PlanExecution, str, str]] = []
+        for idx, execution in enumerate(executions, start=1):
+            journey_label = _build_journey_label(plan, execution)
+            progress_label = _build_progress_label(
+                plan,
+                execution,
+                journey_index=idx,
+                total=total_steps,
+                config=config,
+            )
+            tasks.append((idx, execution, journey_label, progress_label))
+        try:
+            if config.concurrency <= 1:
+                for idx, execution, journey_label, progress_label in tasks:
+                    segment_rows = collect_segments_for_execution(
+                        config=config,
+                        plan=plan,
+                        execution=execution,
+                        journey_index=idx,
+                        journey_label=journey_label,
+                        reporter=reporter,
+                    )
+                    rows.extend(segment_rows)
+                    if segment_rows:
+                        reporter.record_success(progress_label, len(segment_rows))
+                    else:
+                        reporter.record_skip(progress_label, "No flights")
+                    if config.request.delay:
+                        time.sleep(config.request.delay)
+            else:
+                def process_task(
+                    task: Tuple[int, PlanExecution, str, str]
+                ) -> Tuple[str, List[SegmentRow]]:
+                    idx, execution, journey_label, progress_label = task
+                    segment_rows = collect_segments_for_execution(
+                        config=config,
+                        plan=plan,
+                        execution=execution,
+                        journey_index=idx,
+                        journey_label=journey_label,
+                        reporter=None,
+                    )
+                    return progress_label, segment_rows
+
+                with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
+                    executor_ref = executor
+                    futures_map = {executor.submit(process_task, task): task for task in tasks}
+                    for future in as_completed(futures_map):
+                        progress_label, segment_rows = future.result()
+                        rows.extend(segment_rows)
+                        if segment_rows:
+                            reporter.record_success(progress_label, len(segment_rows))
+                        else:
+                            reporter.record_skip(progress_label, "No flights")
+        except KeyboardInterrupt:  # noqa: PERF203
+            if futures_map:
+                for future in futures_map:
+                    try:
+                        future.cancel()
+                    except Exception:  # pragma: no cover
+                        pass
+            if executor_ref is not None:
+                executor_ref.shutdown(wait=False, cancel_futures=True)
+            raise RunInterrupted(
+                plan=plan,
+                output_path=output_path,
+                rows=list(rows),
+                processed=reporter.processed,
+                skipped=reporter.skipped,
+                collected=reporter.rows_collected,
+                total=total_steps,
+            ) from None
+
+    return PlanRunResult(plan=plan, output_path=output_path, rows=rows)
+
+
 def write_csv(
-    rows: Sequence[ItineraryRow],
+    rows: Sequence[SegmentRow],
     output_path: Path,
     *,
     include_header_only: bool = False,
@@ -826,130 +1171,68 @@ def write_csv(
             for row in rows:
                 writer.writerow(asdict(row))
         return
+    header_fields = [field.name for field in fields(SegmentRow)]
     if not include_header_only:
         _warn("No flight data available to write")
         return
-    header_fields = [field.name for field in fields(ItineraryRow)]
     with output_path.open("w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=header_fields)
         writer.writeheader()
 
 
-def run_search(config: SearchConfig) -> List[ItineraryRow]:
-    all_rows: List[ItineraryRow] = []
-    tasks: List[Tuple[str, str, Dict[str, str], str, str, str]] = []
-    for origin_name, origin_code in config.origins.items():
-        origin_label = origin_name or origin_code
-        for destination in config.destinations:
-            destination_city = destination.get("city") or destination.get("iata", "?")
-            destination_label = f"{destination_city} ({destination.get('iata', '?')})"
-            for departure_date, return_date in config.itineraries:
-                label = (
-                    f"{origin_label} ({origin_code}) → {destination_label} "
-                    f"{departure_date}/{return_date} · {config.passenger_count} pax · "
-                    f"{config.currency_code}"
-                )
-                tasks.append((origin_code, origin_label, destination, departure_date, return_date, label))
-
-    total_steps = len(tasks)
-    with ProgressReporter(total_steps, config=config) as reporter:
-        executor_ref: Optional[ThreadPoolExecutor] = None
-        futures_map: Optional[Dict[Future, Tuple[str, str, Dict[str, str], str, str, str]]] = None
-        try:
-            if config.concurrency <= 1:
-                for origin_code, _, destination, departure_date, return_date, label in tasks:
-                    rows = build_itineraries(
-                        config=config,
-                        origin_code=origin_code,
-                        destination=destination,
-                        departure_date=departure_date,
-                        return_date=return_date,
-                        reporter=reporter,
-                    )
-                    added = len(rows)
-                    all_rows.extend(rows)
-                    if added > 0:
-                        reporter.record_success(label, added)
-                    else:
-                        reporter.record_skip(label, "Empty leg")
-                    time.sleep(config.request_delay)
-            else:
-                def process_task(task: Tuple[str, str, Dict[str, str], str, str, str]) -> Tuple[str, List[ItineraryRow]]:
-                    origin_code, _, destination, departure_date, return_date, label = task
-                    rows = build_itineraries(
-                        config=config,
-                        origin_code=origin_code,
-                        destination=destination,
-                        departure_date=departure_date,
-                        return_date=return_date,
-                        reporter=None,
-                    )
-                    return label, rows
-
-                with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
-                    executor_ref = executor
-                    futures_map = {executor.submit(process_task, task): task for task in tasks}
-                    for future in as_completed(futures_map):
-                        label, rows = future.result()
-                        added = len(rows)
-                        all_rows.extend(rows)
-                        if added > 0:
-                            reporter.record_success(label, added)
-                        else:
-                            reporter.record_skip(label, "Empty leg")
-        except KeyboardInterrupt:  # noqa: PERF203
-            if futures_map:
-                for future in futures_map:
-                    try:
-                        future.cancel()
-                    except Exception:  # pragma: no cover - best effort cleanup
-                        pass
-            if executor_ref is not None:
-                executor_ref.shutdown(wait=False, cancel_futures=True)
-            raise RunInterrupted(
-                rows=list(all_rows),
-                processed=reporter.processed,
-                skipped=reporter.skipped,
-                collected=reporter.rows_collected,
-                total=total_steps,
-            ) from None
-    return all_rows
+def run_search(config: SearchConfig) -> List[PlanRunResult]:
+    return [run_plan(config, plan) for plan in config.plans]
 
 
-def execute_search(config: SearchConfig) -> List[ItineraryRow]:
+def execute_search(config: SearchConfig) -> List[SegmentRow]:
     try:
-        rows = run_search(config)
+        plan_results = run_search(config)
     except RunInterrupted as interrupted:
-        rows = interrupted.rows
-        original_name = config.output_path.name
-        draft_name = f"draft-{original_name}"
-        draft_path = config.output_path.with_name(draft_name)
-        write_csv(rows, draft_path, include_header_only=True)
+        draft_path = interrupted.output_path.with_name(
+            f"draft-{interrupted.output_path.name}"
+        )
+        write_csv(interrupted.rows, draft_path, include_header_only=True)
         console.log(
             "[yellow]Search interrupted by Ctrl+C. Partial results saved successfully.[/]"
         )
         draft_display = escape(str(draft_path))
         console.log(
             (
-                f"[yellow]Draft path: {draft_display}. Processed {interrupted.processed}/"
-                f"{interrupted.total} itineraries; remaining {interrupted.remaining}."
-                f" Rows collected {interrupted.collected}, skipped {interrupted.skipped}.[/]"
+                f"[yellow]Plan {interrupted.plan.name}. Processed {interrupted.processed}/"
+                f"{interrupted.total} journeys; remaining {interrupted.remaining}."
+                f" Rows collected {interrupted.collected}, skipped {interrupted.skipped}."
+                f" Draft path: {draft_display}.[/]"
             )
         )
-        return rows
-    if not rows:
+        return interrupted.rows
+
+    all_rows: List[SegmentRow] = []
+    if not plan_results:
         _warn("No flights captured")
-        return rows
-    write_csv(rows, config.output_path)
-    console.log(f"[green]Saved {len(rows)} rows.[/]")
-    console.log(f"[green]Output path: {config.output_path}.")
-    return rows
+        return all_rows
+
+    for result in plan_results:
+        write_csv(result.rows, result.output_path, include_header_only=True)
+        all_rows.extend(result.rows)
+        console.log(
+            f"[green]{result.plan.name}: saved {len(result.rows)} rows. Output path: {result.output_path}.[/]"
+        )
+
+    if not all_rows:
+        _warn("No flights captured")
+
+    return all_rows
+
+
+
+
 
 
 __all__ = [
     "SearchConfig",
     "LegFlight",
-    "ItineraryRow",
+    "SegmentRow",
+    "PlanRunResult",
     "run_search",
     "execute_search",
     "RunInterrupted",
