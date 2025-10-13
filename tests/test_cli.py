@@ -74,4 +74,6 @@ def test_build_config_parses_v2_schema(tmp_path: Path) -> None:
     plan = config.plans[0]
     assert plan.name == "demo"
     assert plan.places["home"] == ["ICN"]
-    assert plan.departures[("home", "beach")] == ["2026-03-01", "2026-03-02"]
+    leg = plan.departures[("home", "beach")]
+    assert leg.dates == ["2026-03-01", "2026-03-02"]
+    assert leg.max_stops is None

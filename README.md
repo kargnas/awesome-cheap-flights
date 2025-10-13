@@ -48,8 +48,9 @@ After each run, open the CSV and sort by price.
 ## Configuration
 - Set schema_version: v2 to enable the DSL.
 - Fill defaults with currency, passenger count, and request minutes.
-- Request delay accepts fractional minutes for rate limiting.
+- Request delay accepts fractional seconds for rate limiting.
 - Filters hold max_stops, include_hidden, and max_hidden_hops limits.
+- Departures allow per-leg max_stops overrides alongside date selectors.
 - Output directory and filename_pattern customize CSV targets.
 - Plans list places, path, departures, filters, and options blocks.
 - Options include include_hidden toggles and hop caps per plan.
@@ -81,6 +82,7 @@ plans:
     departures:
       "home->city":
         dates: ["2026-01-01", "2026-01-02"]
+        max_stops: 0
       "city->home":
         window:
           start: "2026-01-04"
@@ -126,4 +128,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: bc45b29cd11f046f9f03cbb95995da67e04b4dad
+Last commit id: cec459100cc7e8349f774d69b52e338240e41ee8

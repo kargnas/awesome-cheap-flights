@@ -423,11 +423,38 @@ class PlanOutput:
 
 
 @dataclass
+class LegDeparture:
+    dates: List[str]
+    max_stops: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if not self.dates:
+            raise ValueError("Leg departure requires at least one date")
+        normalized: List[str] = []
+        for token in self.dates:
+            value = str(token).strip()
+            if not value:
+                continue
+            normalized.append(value)
+        if not normalized:
+            raise ValueError("Leg departure requires at least one non-empty date")
+        self.dates = normalized
+        if self.max_stops is None:
+            return
+        try:
+            self.max_stops = int(self.max_stops)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid max stops: {self.max_stops}") from exc
+        if self.max_stops < 0 or self.max_stops > 2:
+            raise ValueError("Max stops must be between 0 and 2")
+
+
+@dataclass
 class PlanConfig:
     name: str
     places: Dict[str, List[str]]
     path: List[str]
-    departures: Dict[Tuple[str, str], List[str]]
+    departures: Dict[Tuple[str, str], LegDeparture]
     options: PlanOptions
     filters: Dict[Tuple[str, str], LegFilter]
     output: Optional[PlanOutput] = None
@@ -850,6 +877,9 @@ def _resolve_leg_max_stops(
         if global_limit is not None:
             limit = min(limit, global_limit)
         return limit
+    leg_departure = plan.departures.get((origin_place, destination_place))
+    if leg_departure and leg_departure.max_stops is not None:
+        return leg_departure.max_stops
     override = plan.filters.get((origin_place, destination_place))
     if override and override.max_stops is not None:
         return override.max_stops
@@ -1059,9 +1089,9 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
 
     output_path = _resolve_plan_output_path(config, plan)
     edges = _iter_edges(plan.path)
-    date_lists = [plan.departures.get(edge, []) for edge in edges]
-    for edge, dates in zip(edges, date_lists):
-        if not dates:
+    departure_entries = [plan.departures.get(edge) for edge in edges]
+    for edge, entry in zip(edges, departure_entries):
+        if entry is None or not entry.dates:
             raise ValueError(
                 f"Plan '{plan.name}' missing departure dates for {edge[0]}->{edge[1]}"
             )
@@ -1071,7 +1101,7 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
     executions: List[PlanExecution] = []
     for codes in product(*code_options):
         assignment = dict(zip(place_keys, codes))
-        for date_combo in product(*date_lists):
+        for date_combo in product(*(entry.dates for entry in departure_entries)):
             departures = {edge: date for edge, date in zip(edges, date_combo)}
             executions.append(PlanExecution(assignment=assignment, departures=departures))
 

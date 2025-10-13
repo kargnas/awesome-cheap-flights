@@ -10,6 +10,7 @@ import yaml
 
 from .pipeline import (
     FilterSettings,
+    LegDeparture,
     LegFilter,
     PlanConfig,
     PlanOptions,
@@ -168,16 +169,25 @@ def parse_path(raw: Any) -> List[str]:
     return path
 
 
-def parse_departures(raw: Any) -> Dict[tuple[str, str], List[str]]:
+def parse_departures(raw: Any) -> Dict[tuple[str, str], LegDeparture]:
     if not isinstance(raw, dict):
         raise ValueError("Plan requires 'departures' mapping")
-    departures: Dict[tuple[str, str], List[str]] = {}
+    departures: Dict[tuple[str, str], LegDeparture] = {}
     for key, value in raw.items():
         origin, destination = _parse_leg_key(key)
-        dates = _expand_date_selector(value)
+        selector = value
+        max_stops = None
+        if isinstance(value, dict) and "max_stops" in value:
+            max_stops = value.get("max_stops")
+            selector = {k: v for k, v in value.items() if k != "max_stops"}
+            if not selector:
+                raise ValueError(
+                    f"Leg {origin}->{destination} must specify dates or window when using max_stops"
+                )
+        dates = _expand_date_selector(selector)
         if not dates:
             raise ValueError(f"Leg {origin}->{destination} produced no dates")
-        departures[(origin, destination)] = dates
+        departures[(origin, destination)] = LegDeparture(dates=dates, max_stops=max_stops)
     return departures
 
 

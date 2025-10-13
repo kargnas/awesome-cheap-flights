@@ -1,22 +1,22 @@
 schema_version: v2
 
-# 기본 검색 옵션을 묶어서 정의한다.
+# Define global defaults for every plan.
 defaults:
-  currency: USD            # 전체 여정의 기본 통화.
-  passengers: 1            # 성인 승객 수.
+  currency: USD            # Base currency for entire journey.
+  passengers: 1            # Number of adult travelers.
   request:
-    delay: 0.5             # 요청 간 대기 시간(초 단위).
-    retries: 1             # 실패 시 재시도 횟수.
-    max_leg_results: 3     # 구간당 최대 수집 편수.
+    delay: 0.5             # Delay between requests in seconds.
+    retries: 1             # Retry count for failed fetches.
+    max_leg_results: 3     # Maximum flights stored per leg.
   filters:
-    max_stops: 1           # 기본 허용 경유 횟수.
-    include_hidden: true   # 숨겨진 경유 탐색 전역 활성화.
-    max_hidden_hops: 1     # 숨겨진 경유 탐색 시 허용 경유 수.
+    max_stops: 1           # Global stop allowance per leg.
+    include_hidden: true   # Enable hidden-leg discovery everywhere.
+    max_hidden_hops: 1     # Hidden searches allow one connection.
   output:
     directory: output
     filename_pattern: "{plan}_{timestamp}.csv"
 
-# 하나의 여행 계획을 정의한다.
+# Define a single travel plan.
 plans:
   - name: sample-hop
     places:
@@ -28,18 +28,19 @@ plans:
     path: [home, city, home]
     departures:
       "home->city":
-        dates: ["2026-01-01", "2026-01-02"]   # 첫 이동 날짜들.
+        dates: ["2026-01-01", "2026-01-02"]   # Outbound departure choices.
+        max_stops: 0                            # Limit outbound to nonstop only.
       "city->home":
         window:
-          start: "2026-01-04"                   # 귀국 시작일.
-          end: "2026-01-05"                     # 귀국 종료일.
+          start: "2026-01-04"                   # Return window start date.
+          end: "2026-01-05"                     # Return window end date.
     filters:
       "home->city":
-        max_stops: 0                            # 첫 구간은 직항만 허용.
+        max_stops: 0                            # Keep outbound nonstop as well.
     options:
-      include_hidden: true                      # 숨겨진 도시 조합 추가 탐색.
+      include_hidden: true                      # Add hidden city combinations.
       max_hidden_hops: 1
 
-# 네트워크 조건을 비워두면 시스템 기본값 사용.
+# Leave network settings empty to use system defaults.
 http_proxy: null
 concurrency: 1

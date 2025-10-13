@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pytest
 
 from awesome_cheap_flights.pipeline import (
     FilterSettings,
+    LegDeparture,
     LegFlight,
     OutputSettings,
     PlanConfig,
@@ -25,8 +26,8 @@ def _make_plan() -> PlanConfig:
         places={"home": ["ICN"], "via": ["HKG"], "dest": ["SIN"]},
         path=["home", "via", "dest"],
         departures={
-            ("home", "via"): ["2026-03-01"],
-            ("via", "dest"): ["2026-03-03"],
+            ("home", "via"): LegDeparture(dates=["2026-03-01"]),
+            ("via", "dest"): LegDeparture(dates=["2026-03-03"]),
         },
         options=PlanOptions(include_hidden=True, max_hidden_hops=1),
         filters={},
@@ -111,3 +112,31 @@ def test_run_plan_generates_hidden_rows(monkeypatch: pytest.MonkeyPatch, tmp_pat
     assert hidden_row.origin_code == "ICN"
     assert hidden_row.destination_code == "SIN"
     assert hidden_row.currency == "USD"
+
+
+def test_departure_max_stops_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = _make_plan()
+    plan.departures[("home", "via")].max_stops = 0
+    config = _make_config(plan)
+    captured: List[tuple[str, str, Optional[int]]] = []
+
+    def fake_fetch_leg_flights(**kwargs) -> List[LegFlight]:
+        captured.append(
+            (
+                kwargs["origin_code"],
+                kwargs["destination_code"],
+                kwargs.get("max_stops"),
+            )
+        )
+        return []
+
+    monkeypatch.setattr("awesome_cheap_flights.pipeline.fetch_leg_flights", fake_fetch_leg_flights)
+
+    run_plan(config, plan)
+
+    scheduled_call = next(
+        max_stops
+        for origin, destination, max_stops in captured
+        if origin == "ICN" and destination == "HKG"
+    )
+    assert scheduled_call == 0
