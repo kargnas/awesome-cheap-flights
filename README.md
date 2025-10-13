@@ -8,7 +8,9 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 - Hidden-leg discovery merges with regular legs automatically.
 - Hidden-leg discovery only bridges a single intermediate stop.
 - Plans expand airport pools and date windows per leg.
+- Duplicate flights per journey leg collapse into a single row.
 - Progress logs now surface a sample flight summary per batch.
+- Automatic itinerary workbooks enumerate every leg combination with totals.
 - CSV rows expose variant metadata for hidden journeys.
 - Rich logging prints overview tables and elapsed minutes.
 
@@ -59,6 +61,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Append --debug for full provider payload dumps during runs.
 - Press Ctrl+C to save draft CSV and resume later minutes.
 - Update to this revision if `python -m awesome_cheap_flights.cli` printed nothing.
+- Install openpyxl>=3.1 if itinerary workbooks fail to generate.
 
 ## Configuration
 - Set schema_version: v2 to enable the DSL.
@@ -131,6 +134,13 @@ Each plan expands airport combinations and departure calendars automatically.
 - is_best mirrors Google Flights highlights.
 - currency shows the fare currency code.
 
+## Excel itinerary workbook
+- Each run emits `<csv_stem>_itineraries.xlsx` alongside the CSV export.
+- Columns follow `<origin_place>-><destination_place>_<field>` naming (e.g., `home->las_price`).
+- Per-leg fields cover price, currency, departure timestamps, airline, stops, stop_notes, duration_hours, and variant flags.
+- Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours` when data is complete.
+- For practicality the workbook samples the first 10 flights per leg before computing every combination.
+
 ## Project layout
 - awesome_cheap_flights/cli.py handles CLI parsing and config loading.
 - awesome_cheap_flights/__main__.py enables python -m execution.
@@ -143,4 +153,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 943266ca0d165356d4766dc39e93e36aa6427c5f
+Last commit id: 63ccbe0b806376b562debd98600dfef51f1b9a07

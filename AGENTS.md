@@ -26,6 +26,8 @@
 - A summary table prints after each run with processed itineraries, skips, rows collected, and elapsed minutes.
 - A search overview table is emitted upfront listing origin codes, destination codes, pax, currency, and other knobs; each iteration label repeats route, pax, and currency for quick scanning.
 - Progress labels log a concise flight summary (best fare, airline, leg).
+- Rows deduplicate identical flights per journey leg to avoid repeated segments.
+- Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (first 10 flights/leg, full combinations afterward).
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 
 ## Build, Test, and Development Commands
@@ -78,4 +80,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 943266ca0d165356d4766dc39e93e36aa6427c5f
+Last commit id: 63ccbe0b806376b562debd98600dfef51f1b9a07

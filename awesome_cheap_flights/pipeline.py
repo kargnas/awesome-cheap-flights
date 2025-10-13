@@ -4,6 +4,7 @@ import csv
 import json
 import re
 import time
+from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timedelta
@@ -41,6 +42,9 @@ TIME_PATTERN = re.compile(
 
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
+
+ITINERARY_LEG_SAMPLE_LIMIT = 10
+MAX_ITINERARY_COMBINATIONS = 0
 
 
 console = Console(stderr=True, highlight=False)
@@ -838,13 +842,83 @@ def _resolve_plan_output_path(config: SearchConfig, plan: PlanConfig) -> Path:
     return Path(directory) / filename
 
 
-def _build_journey_label(plan: PlanConfig, execution: PlanExecution) -> str:
-    path_tokens = [f"{place}({execution.assignment.get(place, '?')})" for place in plan.path]
+def _build_journey_label(
+    plan: PlanConfig,
+    execution: PlanExecution,
+    *,
+    journey_index: int,
+) -> str:
     edges = _iter_edges(plan.path)
-    date_tokens = [execution.departures.get(edge, "?") for edge in edges]
-    if date_tokens:
-        return f"{' → '.join(path_tokens)} [{', '.join(date_tokens)}]"
-    return " → ".join(path_tokens)
+    first_edge = edges[0] if edges else None
+    first_date = execution.departures.get(first_edge, "?") if first_edge else "?"
+    origin_place = plan.path[0] if plan.path else "?"
+    destination_place = plan.path[-1] if plan.path else "?"
+    origin_code = execution.assignment.get(origin_place, "?")
+    destination_code = execution.assignment.get(destination_place, "?")
+    return (
+        f"{plan.name}-{journey_index:04d} "
+        f"{origin_code}->{destination_code} {first_date}"
+    )
+
+
+def _segment_row_signature(row: SegmentRow) -> Tuple[object, ...]:
+    return (
+        row.journey_id,
+        row.plan_name,
+        row.variant,
+        row.leg_sequence,
+        row.origin_place,
+        row.origin_code,
+        row.destination_place,
+        row.destination_code,
+        row.hidden_via_places,
+        row.hidden_via_codes,
+        row.departure_date,
+        row.departure_at,
+        row.departure_time,
+        row.duration_hours,
+        row.airline,
+        row.stops,
+        row.stop_notes,
+        row.price,
+        row.currency,
+    )
+
+
+def _prefer_segment_row(existing: SegmentRow, candidate: SegmentRow) -> SegmentRow:
+    if candidate.is_best and not existing.is_best:
+        return candidate
+    if existing.is_best and not candidate.is_best:
+        return existing
+    if candidate.price is not None and existing.price is not None:
+        if candidate.price < existing.price:
+            return candidate
+        if candidate.price > existing.price:
+            return existing
+    return existing
+
+
+def _integrate_segment_rows(
+    segment_rows: Sequence[SegmentRow],
+    rows: List[SegmentRow],
+    index: Dict[Tuple[object, ...], int],
+) -> Tuple[List[SegmentRow], bool]:
+    new_rows: List[SegmentRow] = []
+    updated = False
+    for row in segment_rows:
+        key = _segment_row_signature(row)
+        existing_idx = index.get(key)
+        if existing_idx is None:
+            index[key] = len(rows)
+            rows.append(row)
+            new_rows.append(row)
+            continue
+        existing_row = rows[existing_idx]
+        preferred = _prefer_segment_row(existing_row, row)
+        if preferred is not existing_row:
+            rows[existing_idx] = preferred
+            updated = True
+    return new_rows, updated
 
 
 def _segment_row_sort_key(row: SegmentRow) -> Tuple[float, str, str, str]:
@@ -856,33 +930,190 @@ def _segment_row_sort_key(row: SegmentRow) -> Tuple[float, str, str, str]:
 def _summarize_segment_rows(rows: Sequence[SegmentRow]) -> str:
     if not rows:
         return ""
-    best_row = min(rows, key=_segment_row_sort_key)
-    leg_pairs = {(row.origin_code, row.destination_code) for row in rows}
-    if len(leg_pairs) == 1:
-        origin_code, destination_code = next(iter(leg_pairs))
-    else:
-        origin_code, destination_code = best_row.origin_code, best_row.destination_code
-    leg_label = f"{origin_code}->{destination_code}"
-    schedule_parts = [part for part in (best_row.departure_date, best_row.departure_time) if part]
-    airline = best_row.airline.strip()
-    price_label = best_row.currency
-    if isinstance(best_row.price, int):
-        price_label = f"{best_row.currency} {best_row.price:,}"
-    variant_label = ""
-    if best_row.variant and best_row.variant != "scheduled":
-        variant_label = f"[{best_row.variant}]"
-    best_tag = "[best]" if best_row.is_best else ""
-    components = [leg_label]
-    if schedule_parts:
-        components.append(" ".join(schedule_parts))
-    if airline:
-        components.append(airline)
-    components.append(price_label)
-    if best_tag:
-        components.append(best_tag)
-    if variant_label:
-        components.append(variant_label)
-    return " ".join(component for component in components if component)
+    leg_stats: Dict[str, Dict[str, object]] = {}
+    for row in rows:
+        leg = _build_leg_key(row)
+        data = leg_stats.setdefault(
+            leg,
+            {
+                "count": 0,
+                "min_price": None,
+                "currency": row.currency,
+                "airline": row.airline,
+                "departure": row.departure_at,
+            },
+        )
+        data["count"] = int(data["count"]) + 1
+        if row.price is not None:
+            if data["min_price"] is None or row.price < data["min_price"]:
+                data["min_price"] = row.price
+                data["currency"] = row.currency
+                data["airline"] = row.airline
+                data["departure"] = row.departure_at
+
+    summary_entries: List[str] = []
+    sorted_legs = sorted(
+        leg_stats.items(),
+        key=lambda item: (-int(item[1]["count"]), item[0]),
+    )
+    for leg, stats in sorted_legs[:3]:
+        entry = f"{leg} x{int(stats['count'])}"
+        min_price = stats.get("min_price")
+        currency = stats.get("currency")
+        if isinstance(min_price, int):
+            price_label = f"{currency} {min_price:,}" if currency else f"{min_price:,}"
+            entry += f" ({price_label})"
+        summary_entries.append(entry)
+    remaining = len(sorted_legs) - len(summary_entries)
+    if remaining > 0:
+        summary_entries.append(f"+{remaining} more legs")
+    return "; ".join(summary_entries)
+
+
+def _build_leg_key(row: SegmentRow) -> str:
+    return f"{row.origin_place}->{row.destination_place}"
+
+
+LEG_EXPORT_FIELDS = (
+    "price",
+    "currency",
+    "departure_at",
+    "departure_time",
+    "airline",
+    "stops",
+    "stop_notes",
+    "duration_hours",
+    "variant",
+)
+
+
+def _build_plan_itinerary_combinations(
+    plan: PlanConfig,
+    rows: Sequence[SegmentRow],
+    *,
+    leg_sample_limit: int = ITINERARY_LEG_SAMPLE_LIMIT,
+    max_combinations: int = MAX_ITINERARY_COMBINATIONS,
+) -> Tuple[List[Dict[str, object]], bool, bool]:
+    journeys: Dict[str, List[SegmentRow]] = defaultdict(list)
+    for row in rows:
+        if row.variant != "scheduled":
+            continue
+        journeys[row.journey_id].append(row)
+
+    combinations: List[Dict[str, object]] = []
+    expected_leg_count = max(len(plan.path) - 1, 0)
+    truncated = False
+    clamped = False
+
+    for journey_id, journey_rows in journeys.items():
+        legs_map: Dict[int, List[SegmentRow]] = defaultdict(list)
+        for row in journey_rows:
+            legs_map[row.leg_sequence].append(row)
+        if len(legs_map) != expected_leg_count or not legs_map:
+            continue
+        ordered_sequences = sorted(legs_map.keys())
+        leg_rows: List[List[SegmentRow]] = []
+        for idx in ordered_sequences:
+            flights = sorted(legs_map[idx], key=_segment_row_sort_key)
+            if leg_sample_limit and len(flights) > leg_sample_limit:
+                flights = flights[:leg_sample_limit]
+                clamped = True
+            leg_rows.append(flights)
+        for combo in product(*leg_rows):
+            record: Dict[str, object] = {
+                "plan_name": plan.name,
+                "journey_id": combo[0].journey_id,
+                "journey_label": combo[0].journey_label,
+            }
+            total_price = 0
+            total_duration = 0.0
+            price_complete = True
+            currency = None
+            for row in combo:
+                leg_key = _build_leg_key(row)
+                for field in LEG_EXPORT_FIELDS:
+                    record[f"{leg_key}_{field}"] = getattr(row, field)
+                if row.price is not None:
+                    total_price += row.price
+                else:
+                    price_complete = False
+                if row.duration_hours:
+                    total_duration += row.duration_hours
+                if row.currency:
+                    currency = row.currency
+            record["total_price"] = total_price if price_complete else None
+            record["total_currency"] = currency
+            record["total_duration_hours"] = round(total_duration, 2) if total_duration else None
+            combinations.append(record)
+            if max_combinations and len(combinations) >= max_combinations:
+                truncated = True
+                break
+        if truncated:
+            break
+
+    combinations.sort(
+        key=lambda entry: (
+            entry.get("total_price") is None,
+            entry.get("total_price") if entry.get("total_price") is not None else float("inf"),
+            entry.get("journey_id"),
+        )
+    )
+    return combinations, truncated, clamped
+
+
+def _build_summary_headers(
+    plan: PlanConfig,
+    combinations: Sequence[Dict[str, object]],
+) -> List[str]:
+    base_headers = ["plan_name", "journey_id", "journey_label"]
+    leg_headers: List[str] = []
+    leg_keys = [f"{plan.path[idx]}->{plan.path[idx + 1]}" for idx in range(max(len(plan.path) - 1, 0))]
+    for leg_key in leg_keys:
+        for field in LEG_EXPORT_FIELDS:
+            leg_headers.append(f"{leg_key}_{field}")
+    trailing_headers = ["total_price", "total_currency", "total_duration_hours"]
+    # Include any additional keys that might not be covered (fallback for hidden variants in future)
+    known = set(base_headers + leg_headers + trailing_headers)
+    extra_headers: List[str] = []
+    for record in combinations:
+        for key in record.keys():
+            if key not in known and key not in extra_headers:
+                extra_headers.append(key)
+    return base_headers + leg_headers + trailing_headers + extra_headers
+
+
+def _write_plan_summary_excel(
+    plan: PlanConfig,
+    rows: Sequence[SegmentRow],
+    csv_path: Path,
+) -> Tuple[Optional[Path], int, bool, bool]:
+    combinations, truncated, clamped = _build_plan_itinerary_combinations(plan, rows)
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except ImportError:  # pragma: no cover - runtime guard
+        _warn("openpyxl not installed; skipping Excel summary export")
+        return None, 0, truncated, clamped
+
+    headers = _build_summary_headers(plan, combinations)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Itineraries"
+    worksheet.append(headers)
+
+    for record in combinations:
+        worksheet.append([record.get(header, "") for header in headers])
+
+    for idx, header in enumerate(headers, start=1):
+        values = [header]
+        values.extend(record.get(header, "") for record in combinations)
+        max_length = max(len(str(value)) if value is not None else 0 for value in values)
+        worksheet.column_dimensions[get_column_letter(idx)].width = min(60, max(12, max_length + 2))
+
+    summary_name = f"{csv_path.stem}_itineraries.xlsx"
+    summary_path = csv_path.with_name(summary_name)
+    workbook.save(summary_path)
+    return summary_path, len(combinations), truncated, clamped
 
 
 def _build_progress_label(
@@ -1153,8 +1384,13 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
         executor_ref: Optional[ThreadPoolExecutor] = None
         futures_map: Optional[Dict[Future, Tuple[int, PlanExecution, str, str]]] = None
         tasks: List[Tuple[int, PlanExecution, str, str]] = []
+        signature_index: Dict[Tuple[object, ...], int] = {}
         for idx, execution in enumerate(executions, start=1):
-            journey_label = _build_journey_label(plan, execution)
+            journey_label = _build_journey_label(
+                plan,
+                execution,
+                journey_index=idx,
+            )
             progress_label = _build_progress_label(
                 plan,
                 execution,
@@ -1174,14 +1410,32 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
                         journey_label=journey_label,
                         reporter=reporter,
                     )
-                    rows.extend(segment_rows)
-                    summary = _summarize_segment_rows(segment_rows)
                     if segment_rows:
-                        reporter.record_success(
-                            progress_label,
-                            len(segment_rows),
-                            summary or journey_label,
+                        new_rows, updated = _integrate_segment_rows(
+                            segment_rows,
+                            rows,
+                            signature_index,
                         )
+                        summary_source = new_rows or segment_rows
+                        summary = _summarize_segment_rows(summary_source)
+                        if new_rows:
+                            reporter.record_success(
+                                progress_label,
+                                len(new_rows),
+                                summary or journey_label,
+                            )
+                        elif updated:
+                            reporter.record_skip(
+                                progress_label,
+                                "Duplicate flights",
+                                summary or journey_label,
+                            )
+                        else:
+                            reporter.record_skip(
+                                progress_label,
+                                "Duplicate flights",
+                                summary or journey_label,
+                            )
                     else:
                         reporter.record_skip(progress_label, "No flights", journey_label)
                     if config.request.delay:
@@ -1189,7 +1443,7 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
             else:
                 def process_task(
                     task: Tuple[int, PlanExecution, str, str]
-                ) -> Tuple[str, List[SegmentRow], str, str]:
+                ) -> Tuple[str, List[SegmentRow], str]:
                     idx, execution, journey_label, progress_label = task
                     segment_rows = collect_segments_for_execution(
                         config=config,
@@ -1199,21 +1453,39 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
                         journey_label=journey_label,
                         reporter=None,
                     )
-                    summary = _summarize_segment_rows(segment_rows)
-                    return progress_label, segment_rows, summary, journey_label
+                    return progress_label, segment_rows, journey_label
 
                 with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
                     executor_ref = executor
                     futures_map = {executor.submit(process_task, task): task for task in tasks}
                     for future in as_completed(futures_map):
-                        progress_label, segment_rows, summary, journey_label = future.result()
-                        rows.extend(segment_rows)
+                        progress_label, segment_rows, journey_label = future.result()
                         if segment_rows:
-                            reporter.record_success(
-                                progress_label,
-                                len(segment_rows),
-                                summary or journey_label,
+                            new_rows, updated = _integrate_segment_rows(
+                                segment_rows,
+                                rows,
+                                signature_index,
                             )
+                            summary_source = new_rows or segment_rows
+                            summary = _summarize_segment_rows(summary_source)
+                            if new_rows:
+                                reporter.record_success(
+                                    progress_label,
+                                    len(new_rows),
+                                    summary or journey_label,
+                                )
+                            elif updated:
+                                reporter.record_skip(
+                                    progress_label,
+                                    "Duplicate flights",
+                                    summary or journey_label,
+                                )
+                            else:
+                                reporter.record_skip(
+                                    progress_label,
+                                    "Duplicate flights",
+                                    summary or journey_label,
+                                )
                         else:
                             reporter.record_skip(progress_label, "No flights", journey_label)
         except KeyboardInterrupt:  # noqa: PERF203
@@ -1295,10 +1567,33 @@ def execute_search(config: SearchConfig) -> List[SegmentRow]:
 
     for result in plan_results:
         write_csv(result.rows, result.output_path, include_header_only=True)
+        workbook_path, itinerary_count, truncated, clamped = _write_plan_summary_excel(
+            result.plan,
+            result.rows,
+            result.output_path,
+        )
         all_rows.extend(result.rows)
         console.log(
             f"[green]{result.plan.name}: saved {len(result.rows)} rows. Output path: {result.output_path}.[/]"
         )
+        if workbook_path is not None:
+            console.log(
+                f"[green]{result.plan.name}: itineraries workbook saved with {itinerary_count} rows. Path: {workbook_path}.[/]"
+            )
+            if clamped:
+                _warn(
+                    (
+                        "Itinerary workbook limited to the first "
+                        f"{ITINERARY_LEG_SAMPLE_LIMIT} flights per leg to control size"
+                    )
+                )
+            if truncated:
+                _warn(
+                    (
+                        "Itinerary workbook truncated after "
+                        f"{MAX_ITINERARY_COMBINATIONS} combinations"
+                    )
+                )
 
     if not all_rows:
         _warn("No flights captured")
