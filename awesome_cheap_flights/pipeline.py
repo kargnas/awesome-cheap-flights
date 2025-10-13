@@ -95,26 +95,28 @@ class ProgressReporter:
             self._progress.__exit__(exc_type, exc, exc_tb)
         self._render_summary()
 
-    def record_success(self, label: str, rows_added: int) -> None:
+    def record_success(self, label: str, rows_added: int, details: str | None = None) -> None:
         with self._lock:
             self.processed += 1
             self.rows_collected += rows_added
             message = f"+{rows_added} rows"
             total_note = f"total {self.rows_collected}"
-            log_line = f"[green]{label}[/] {message} {total_note}"
+            entry = label if not details else f"{label} · {details}"
+            log_line = f"[green]{entry}[/] {message} {total_note}"
             if self._progress is not None and self._task_id is not None:
                 self._progress.update(self._task_id, advance=1, description=label)
                 self._progress.log(log_line)
             else:
                 console.log(log_line)
 
-    def record_skip(self, label: str, reason: str) -> None:
+    def record_skip(self, label: str, reason: str, details: str | None = None) -> None:
         with self._lock:
             self.processed += 1
             self.skipped += 1
             note = reason if reason.endswith(".") else f"{reason}."
             total_note = f"total {self.rows_collected}"
-            log_line = f"[yellow]{label}[/] {note} {total_note}"
+            entry = label if not details else f"{label} · {details}"
+            log_line = f"[yellow]{entry}[/] {note} {total_note}"
             if self._progress is not None and self._task_id is not None:
                 self._progress.update(self._task_id, advance=1, description=label)
                 self._progress.log(log_line)
@@ -845,6 +847,44 @@ def _build_journey_label(plan: PlanConfig, execution: PlanExecution) -> str:
     return " → ".join(path_tokens)
 
 
+def _segment_row_sort_key(row: SegmentRow) -> Tuple[float, str, str, str]:
+    price = float(row.price) if isinstance(row.price, (int, float)) else float("inf")
+    departure = row.departure_at or row.departure_date or ""
+    return price, departure, row.origin_code, row.destination_code
+
+
+def _summarize_segment_rows(rows: Sequence[SegmentRow]) -> str:
+    if not rows:
+        return ""
+    best_row = min(rows, key=_segment_row_sort_key)
+    leg_pairs = {(row.origin_code, row.destination_code) for row in rows}
+    if len(leg_pairs) == 1:
+        origin_code, destination_code = next(iter(leg_pairs))
+    else:
+        origin_code, destination_code = best_row.origin_code, best_row.destination_code
+    leg_label = f"{origin_code}->{destination_code}"
+    schedule_parts = [part for part in (best_row.departure_date, best_row.departure_time) if part]
+    airline = best_row.airline.strip()
+    price_label = best_row.currency
+    if isinstance(best_row.price, int):
+        price_label = f"{best_row.currency} {best_row.price:,}"
+    variant_label = ""
+    if best_row.variant and best_row.variant != "scheduled":
+        variant_label = f"[{best_row.variant}]"
+    best_tag = "[best]" if best_row.is_best else ""
+    components = [leg_label]
+    if schedule_parts:
+        components.append(" ".join(schedule_parts))
+    if airline:
+        components.append(airline)
+    components.append(price_label)
+    if best_tag:
+        components.append(best_tag)
+    if variant_label:
+        components.append(variant_label)
+    return " ".join(component for component in components if component)
+
+
 def _build_progress_label(
     plan: PlanConfig,
     execution: PlanExecution,
@@ -1135,16 +1175,21 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
                         reporter=reporter,
                     )
                     rows.extend(segment_rows)
+                    summary = _summarize_segment_rows(segment_rows)
                     if segment_rows:
-                        reporter.record_success(progress_label, len(segment_rows))
+                        reporter.record_success(
+                            progress_label,
+                            len(segment_rows),
+                            summary or journey_label,
+                        )
                     else:
-                        reporter.record_skip(progress_label, "No flights")
+                        reporter.record_skip(progress_label, "No flights", journey_label)
                     if config.request.delay:
                         time.sleep(config.request.delay)
             else:
                 def process_task(
                     task: Tuple[int, PlanExecution, str, str]
-                ) -> Tuple[str, List[SegmentRow]]:
+                ) -> Tuple[str, List[SegmentRow], str, str]:
                     idx, execution, journey_label, progress_label = task
                     segment_rows = collect_segments_for_execution(
                         config=config,
@@ -1154,18 +1199,23 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
                         journey_label=journey_label,
                         reporter=None,
                     )
-                    return progress_label, segment_rows
+                    summary = _summarize_segment_rows(segment_rows)
+                    return progress_label, segment_rows, summary, journey_label
 
                 with ThreadPoolExecutor(max_workers=config.concurrency) as executor:
                     executor_ref = executor
                     futures_map = {executor.submit(process_task, task): task for task in tasks}
                     for future in as_completed(futures_map):
-                        progress_label, segment_rows = future.result()
+                        progress_label, segment_rows, summary, journey_label = future.result()
                         rows.extend(segment_rows)
                         if segment_rows:
-                            reporter.record_success(progress_label, len(segment_rows))
+                            reporter.record_success(
+                                progress_label,
+                                len(segment_rows),
+                                summary or journey_label,
+                            )
                         else:
-                            reporter.record_skip(progress_label, "No flights")
+                            reporter.record_skip(progress_label, "No flights", journey_label)
         except KeyboardInterrupt:  # noqa: PERF203
             if futures_map:
                 for future in futures_map:

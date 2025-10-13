@@ -6,7 +6,9 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 
 ## Highlights
 - Hidden-leg discovery merges with regular legs automatically.
+- Hidden-leg discovery only bridges a single intermediate stop.
 - Plans expand airport pools and date windows per leg.
+- Progress logs now surface a sample flight summary per batch.
 - CSV rows expose variant metadata for hidden journeys.
 - Rich logging prints overview tables and elapsed minutes.
 
@@ -141,4 +143,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 2f734c9417c7d4699e9523a41d0a600159523575
+Last commit id: 943266ca0d165356d4766dc39e93e36aa6427c5f
