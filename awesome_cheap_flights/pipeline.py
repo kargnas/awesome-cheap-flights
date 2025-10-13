@@ -803,8 +803,10 @@ def _iter_edges(path: Sequence[str]) -> List[Tuple[str, str]]:
 
 def _iter_hidden_pairs(path: Sequence[str]) -> Iterable[Tuple[int, int]]:
     for start in range(len(path) - 2):
-        for end in range(start + 2, len(path)):
-            yield start, end
+        end = start + 2
+        if path[start] == path[end]:
+            continue
+        yield start, end
 
 
 def _slugify_plan_name(value: str) -> str:

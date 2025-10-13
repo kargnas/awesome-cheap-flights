@@ -12,9 +12,9 @@
 
 ## Project Structure & Module Organization
 
-- `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs.
+- `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs; direct module execution now exits via `SystemExit(main())`.
 - `awesome_cheap_flights/__main__.py`: Enables `python -m awesome_cheap_flights` compatibility.
-- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities.
+- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities; hidden legs now only bridge a single intermediate stop.
 - `sample.config.yaml`: Minimal example config used for smoke tests; copy to `config.yaml` for local overrides.
 - `output/`: Git-ignored directory for generated CSV files (only tracked when explicitly whitelisted).
 
@@ -77,4 +77,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: d9af9db11cf2ae077d97f2c1b4333bd4bf3dd0ed
+Last commit id: 2f734c9417c7d4699e9523a41d0a600159523575

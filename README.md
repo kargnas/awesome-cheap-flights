@@ -56,6 +56,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Upgrade typing_extensions when imports complain about missing features.
 - Append --debug for full provider payload dumps during runs.
 - Press Ctrl+C to save draft CSV and resume later minutes.
+- Update to this revision if `python -m awesome_cheap_flights.cli` printed nothing.
 
 ## Configuration
 - Set schema_version: v2 to enable the DSL.
@@ -140,4 +141,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: d9af9db11cf2ae077d97f2c1b4333bd4bf3dd0ed
+Last commit id: 2f734c9417c7d4699e9523a41d0a600159523575
