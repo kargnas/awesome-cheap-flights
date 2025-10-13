@@ -77,4 +77,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: cec459100cc7e8349f774d69b52e338240e41ee8
+Last commit id: d9af9db11cf2ae077d97f2c1b4333bd4bf3dd0ed

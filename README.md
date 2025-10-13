@@ -40,6 +40,18 @@ uvx awesome-cheap-flights@latest --config sample.config.yaml --plan sample-hop
 ```
 After each run, open the CSV and sort by price.
 
+## Development mode
+Run the CLI locally for iterative tweaks.
+```bash
+uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/dev.csv
+```
+- Copy sample.config.yaml into config.yaml before editing routes.
+- Update config.yaml to adjust places, paths, or windows.
+- Set UV_CACHE_DIR=$(pwd)/.cache/uv to isolate uv cache.
+- Omit --output to write timestamped files inside output/ automatically.
+- Combine CLI overrides with commas or repeated flags for airports.
+- Sample plan completes within five minutes on modern laptops.
+
 ## Troubleshooting
 - Upgrade typing_extensions when imports complain about missing features.
 - Append --debug for full provider payload dumps during runs.
@@ -128,4 +140,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: cec459100cc7e8349f774d69b52e338240e41ee8
+Last commit id: d9af9db11cf2ae077d97f2c1b4333bd4bf3dd0ed
