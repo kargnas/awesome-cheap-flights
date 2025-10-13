@@ -12,9 +12,9 @@
 
 ## Project Structure & Module Organization
 
-- `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs.
+- `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs; direct module execution now exits via `SystemExit(main())`.
 - `awesome_cheap_flights/__main__.py`: Enables `python -m awesome_cheap_flights` compatibility.
-- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities.
+- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities; hidden legs now only bridge a single intermediate stop.
 - `sample.config.yaml`: Minimal example config used for smoke tests; copy to `config.yaml` for local overrides.
 - `output/`: Git-ignored directory for generated CSV files (only tracked when explicitly whitelisted).
 
@@ -25,6 +25,9 @@
 - Non-interactive sessions fall back to concise text logs on stderr while preserving the same counts.
 - A summary table prints after each run with processed itineraries, skips, rows collected, and elapsed minutes.
 - A search overview table is emitted upfront listing origin codes, destination codes, pax, currency, and other knobs; each iteration label repeats route, pax, and currency for quick scanning.
+- Progress labels log a concise flight summary (best fare, airline, leg).
+- Rows deduplicate identical flights per journey leg to avoid repeated segments.
+- Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (first 10 flights/leg, full combinations afterward).
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 
 ## Build, Test, and Development Commands
@@ -77,4 +80,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: b40f52de85515298de193e98a704685f6a85b7dc
+Last commit id: 63ccbe0b806376b562debd98600dfef51f1b9a07

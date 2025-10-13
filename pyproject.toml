@@ -1,6 +1,6 @@
 [project]
 name = "awesome-cheap-flights"
-version = "0.2.1"
+version = "1.0.0"
 description = "Weekend-hopper toolkit for ICN short-haul scouting"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -10,6 +10,7 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rich>=13.7",
     "typing-extensions>=4.5",
+    "openpyxl>=3.1",
 ]
 
 authors = [{ name = "Awesome Cheap Flights Maintainers" }]

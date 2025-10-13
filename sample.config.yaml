@@ -1,30 +1,46 @@
-# Sample configuration for awesome-cheap-flights (lightweight for tests)
-currency: USD
-# currency: KRW # Korean Won
-# currency: JPY # Japanese Yen
-# currency: CNY # Chinese Yuan
+schema_version: v2
 
-departures:
-  - ICN # Seoul Incheon
+# Define global defaults for every plan.
+defaults:
+  currency: USD            # Base currency for entire journey.
+  passengers: 1            # Number of adult travelers.
+  request:
+    delay: 0.5             # Delay between requests in seconds.
+    retries: 1             # Retry count for failed fetches.
+    max_leg_results: 3     # Maximum flights stored per leg.
+  filters:
+    max_stops: 1           # Global stop allowance per leg.
+    include_hidden: true   # Enable hidden-leg discovery everywhere.
+    max_hidden_hops: 1     # Hidden searches allow one connection.
+  output:
+    directory: output
+    filename_pattern: "{plan}_{timestamp}.csv"
 
-destinations:
-  - GMP # Fukuoka
-  - HKG # Hong Kong
+# Define a single travel plan.
+plans:
+  - name: sample-hop
+    places:
+      home:
+        - ICN # Seoul Incheon
+      city:
+        - FUK # Fukuoka
+        - HKG # Hong Kong
+    path: [home, city, home]
+    departures:
+      "home->city":
+        dates: ["2026-01-01", "2026-01-02"]   # Outbound departure choices.
+        max_stops: 0                            # Limit outbound to nonstop only.
+      "city->home":
+        window:
+          start: "2026-01-04"                   # Return window start date.
+          end: "2026-01-05"                     # Return window end date.
+    filters:
+      "home->city":
+        max_stops: 0                            # Keep outbound nonstop as well.
+    options:
+      include_hidden: true                      # Add hidden city combinations.
+      max_hidden_hops: 1
 
-itineraries:
-  - outbound:
-      start: 2026-01-01
-      end: 2026-01-02
-    inbound: 2026-01-04
-  - outbound: 2026-01-05
-    inbound: 2026-01-10
-
-# Optional: omit this key to default to output/<local timestamp>_<TZ>.csv
-output_path: output/sample.csv
-request_delay: 0.5
-max_retries: 1
-max_leg_results: 3
-max_stops: 2 # 0=nonstop, 1=one stop, 2=two stops (set null or remove for unlimited)
-passengers: 1 # Total adult passengers
-# http_proxy: http://127.0.0.1:8080
-# concurrency: 2
+# Leave network settings empty to use system defaults.
+http_proxy: null
+concurrency: 1
