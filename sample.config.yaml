@@ -46,5 +46,7 @@ plans:
       max_hidden_hops: 1
 
 # Leave network settings empty to use system defaults.
+google_cookie_file: null
+# google_cookie: "SID=...; HSID=..."
 http_proxy: null
 concurrency: 1

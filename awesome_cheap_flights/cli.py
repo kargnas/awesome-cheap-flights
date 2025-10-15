@@ -277,7 +277,7 @@ def parse_plan(raw: Any, defaults: FilterSettings) -> PlanConfig:
 
 def build_config(args: argparse.Namespace) -> SearchConfig:
     yaml_path: Path | None = None
-    if args.config:
+    if getattr(args, "config", None):
         yaml_path = Path(args.config)
     elif os.getenv(CONFIG_ENV_VAR):
         yaml_path = Path(os.environ[CONFIG_ENV_VAR])
@@ -299,11 +299,11 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     currency_value = strip_comment(
         defaults_block.get("currency", DEFAULT_CURRENCY)
     ) or DEFAULT_CURRENCY
-    if args.currency:
+    if getattr(args, "currency", None):
         currency_value = strip_comment(args.currency) or DEFAULT_CURRENCY
 
     passengers_raw = defaults_block.get("passengers", DEFAULT_PASSENGERS)
-    if args.passengers is not None:
+    if getattr(args, "passengers", None) is not None:
         passengers_raw = args.passengers
     passengers_token = strip_comment(passengers_raw)
     if not passengers_token:
@@ -324,7 +324,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
             f"Unknown request option(s): {', '.join(sorted(unexpected_request))}"
         )
     seat_value = strip_comment(request_block.get("seat", DEFAULT_SEAT_CLASS)) or DEFAULT_SEAT_CLASS
-    if args.seat_class:
+    if getattr(args, "seat_class", None):
         seat_value = strip_comment(args.seat_class) or DEFAULT_SEAT_CLASS
     request_settings = RequestSettings(
         delay=request_block.get("delay", DEFAULT_REQUEST_DELAY),
@@ -363,8 +363,9 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     ) or DEFAULT_FILENAME_PATTERN
     output_directory: Path | str = output_directory_raw
     output_filename: Optional[str] = None
-    if args.output:
-        override_raw = strip_comment(args.output)
+    output_override = getattr(args, "output", None)
+    if output_override:
+        override_raw = strip_comment(output_override)
         if override_raw:
             override_path = Path(override_raw)
             if "{" in override_raw or "}" in override_raw:
@@ -398,9 +399,9 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     max_combo_value = itinerary_block.get("max_combinations", DEFAULT_ITINERARY_MAX_COMBINATIONS)
     if isinstance(max_combo_value, str):
         max_combo_value = strip_comment(max_combo_value)
-    if args.itinerary_leg_limit is not None:
+    if getattr(args, "itinerary_leg_limit", None) is not None:
         leg_limit_value = args.itinerary_leg_limit
-    if args.itinerary_max_combos is not None:
+    if getattr(args, "itinerary_max_combos", None) is not None:
         max_combo_value = args.itinerary_max_combos
     itinerary_settings = ItinerarySettings(
         leg_limit=leg_limit_value,
@@ -408,22 +409,41 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     )
 
     http_proxy = strip_comment(config_data.get("http_proxy", "")) or None
-    if args.http_proxy:
+    if getattr(args, "http_proxy", None):
         http_proxy = strip_comment(args.http_proxy) or None
 
+    google_cookie = None
+    if "google_cookie" in config_data:
+        raw_cookie = config_data.get("google_cookie", None)
+        if raw_cookie is not None:
+            google_cookie = str(raw_cookie)
+    cookie_file_raw = config_data.get("google_cookie_file")
+    if cookie_file_raw:
+        cookie_path = Path(strip_comment(cookie_file_raw)).expanduser()
+        if not cookie_path.exists():
+            raise FileNotFoundError(f"Cookie file not found: {cookie_path}")
+        google_cookie = cookie_path.read_text(encoding="utf-8")
+    if getattr(args, "google_cookie", None):
+        google_cookie = args.google_cookie
+    if getattr(args, "google_cookie_file", None):
+        cookie_path = Path(args.google_cookie_file).expanduser()
+        if not cookie_path.exists():
+            raise FileNotFoundError(f"Cookie file not found: {cookie_path}")
+        google_cookie = cookie_path.read_text(encoding="utf-8")
+
     concurrency_value = config_data.get("concurrency", DEFAULT_CONCURRENCY)
-    if args.concurrency is not None:
+    if getattr(args, "concurrency", None) is not None:
         concurrency_value = args.concurrency
 
     debug_value = config_data.get("debug", DEFAULT_DEBUG)
-    debug_flag = bool(debug_value) or bool(args.debug)
+    debug_flag = bool(debug_value) or bool(getattr(args, "debug", False))
 
     plans_raw = config_data.get("plans")
     if not isinstance(plans_raw, list) or not plans_raw:
         raise ValueError("Config must provide a non-empty 'plans' list")
     plans = [parse_plan(plan_raw, filter_settings) for plan_raw in plans_raw]
 
-    if args.plan:
+    if getattr(args, "plan", None):
         allowed = {name.strip() for name in args.plan if name.strip()}
         plans = [plan for plan in plans if plan.name in allowed]
         if not plans:
@@ -438,6 +458,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         output=output_settings,
         itinerary=itinerary_settings,
         http_proxy=http_proxy,
+        google_cookie=google_cookie,
         concurrency=concurrency_value,
         debug=debug_flag,
         plans=plans,
@@ -468,6 +489,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--http-proxy",
         help="HTTP(S) proxy URL to route requests through",
+    )
+    parser.add_argument(
+        "--google-cookie",
+        help="Cookie header applied to Google Flights requests",
+    )
+    parser.add_argument(
+        "--google-cookie-file",
+        help="Path to file whose contents become the Google Flights Cookie header",
     )
     parser.add_argument(
         "--concurrency",

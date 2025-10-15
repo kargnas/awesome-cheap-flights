@@ -44,6 +44,7 @@ def _make_config(plan: PlanConfig) -> SearchConfig:
         filters=FilterSettings(max_stops=1, include_hidden=True, max_hidden_hops=1),
         output=OutputSettings(directory="output", filename_pattern="{plan}_{timestamp}.csv"),
         http_proxy=None,
+        google_cookie=None,
         concurrency=1,
         debug=False,
         plans=[plan],

@@ -87,6 +87,7 @@
 - Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops). Set `max_stops` to `null` or omit the key for unlimited stops.
 - Legacy `departure`/`return` itinerary keys are removed; only `outbound`/`inbound` are valid now.
 - If neither CLI nor YAML sets an output path, the run writes to `output/<local timestamp>_<TZ>.csv`.
+- Provide Google cookie headers with `google_cookie`, `google_cookie_file`, `--google-cookie`, or `--google-cookie-file` when you need browser-authenticated traffic.
 - HTTP proxy support is available via `http_proxy` (YAML) or `--http-proxy`.
 - Parallelism is controlled via `concurrency` (YAML) or `--concurrency`; default is 1.
 
@@ -96,4 +97,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 2bf372667ca0784a16bf533f05e71d63cc703e50
+Last commit id: d21759890abb95f92e0b9d50f2f38a7cab5d7dd0
