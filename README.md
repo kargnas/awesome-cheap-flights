@@ -11,6 +11,8 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 - Duplicate flights per journey leg collapse into a single row.
 - Progress logs now surface a sample flight summary per batch.
 - Automatic itinerary workbooks enumerate every leg combination with totals.
+- Seat class selector supports economy, premium-economy, business, and first.
+- Itinerary sampling knobs and CSV-to-Excel conversion keep exports in your control.
 - CSV rows expose variant metadata for hidden journeys.
 - Rich logging prints overview tables and elapsed minutes.
 
@@ -54,6 +56,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Set UV_CACHE_DIR=$(pwd)/.cache/uv to isolate uv cache.
 - Omit --output to write timestamped files inside output/ automatically.
 - Combine CLI overrides with commas or repeated flags for airports.
+- Use `--csv-only <path>` to turn saved CSVs into fresh itinerary workbooks without re-running searches.
 - Sample plan completes within five minutes on modern laptops.
 
 ## Troubleshooting
@@ -67,12 +70,14 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Set schema_version: v2 to enable the DSL.
 - Fill defaults with currency, passenger count, and request minutes.
 - Request delay accepts fractional seconds for rate limiting.
+- Request seat lets you choose cabin class (economy, premium-economy, business, first).
+- Itinerary leg/combo limits (0 = unlimited) tame workbook size without losing control.
 - Filters hold max_stops, include_hidden, and max_hidden_hops limits.
 - Departures allow per-leg max_stops overrides alongside date selectors.
 - Output directory and filename_pattern customize CSV targets.
 - Plans list places, path, departures, filters, and options blocks.
 - Options include include_hidden toggles and hop caps per plan.
-- CLI overrides accept plan, currency, passengers, proxy, concurrency, debug.
+- CLI overrides accept plan, currency, passengers, seat class, itinerary limits, proxy, concurrency, debug.
 
 ### YAML sample
 ```yaml
@@ -84,6 +89,7 @@ defaults:
     delay: 0.5
     retries: 1
     max_leg_results: 3
+    seat: economy
   filters:
     max_stops: 1
     include_hidden: true
@@ -91,6 +97,9 @@ defaults:
   output:
     directory: output
     filename_pattern: "{plan}_{timestamp}.csv"
+  itinerary:
+    leg_limit: 0       # Unlimited per leg; set 10 for a conservative cap.
+    max_combinations: 0
 plans:
   - name: sample-hop
     places:
@@ -139,7 +148,7 @@ Each plan expands airport combinations and departure calendars automatically.
 - Columns follow `<origin_place>-><destination_place>_<field>` naming (e.g., `home->las_price`).
 - Per-leg fields cover price, currency, departure timestamps, airline, stops, stop_notes, duration_hours, and variant flags.
 - Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours` when data is complete.
-- For practicality the workbook samples the first 10 flights per leg before computing every combination.
+- Tune `leg_limit` (flights per leg, 0 = unlimited, 10 recommended) and `max_combinations` (0 = unlimited) to balance coverage versus file size.
 
 ## Project layout
 - awesome_cheap_flights/cli.py handles CLI parsing and config loading.
@@ -153,4 +162,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 63ccbe0b806376b562debd98600dfef51f1b9a07
+Last commit id: b25874f0822f7069d12621f1e1b880baaa5c6601

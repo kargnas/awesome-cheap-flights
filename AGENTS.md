@@ -27,7 +27,8 @@
 - A search overview table is emitted upfront listing origin codes, destination codes, pax, currency, and other knobs; each iteration label repeats route, pax, and currency for quick scanning.
 - Progress labels log a concise flight summary (best fare, airline, leg).
 - Rows deduplicate identical flights per journey leg to avoid repeated segments.
-- Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (first 10 flights/leg, full combinations afterward).
+- Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (default unlimited per leg; clamp via `leg_limit`).
+- CLI surfaces itinerary limits and recommended values when exporting workbooks.
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 
 ## Build, Test, and Development Commands
@@ -68,6 +69,9 @@
 - Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.
 - Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 - Use the `passengers` key to control the number of adult seats (defaults to 1).
+- Add `request.seat` or `--seat-class` to select economy, premium-economy, business, or first cabins.
+- Control Excel growth with `defaults.itinerary.leg_limit` / `max_combinations` or the CLI flags `--itinerary-leg-limit` / `--itinerary-max-combos`.
+- Use `--csv-only` to convert existing CSV exports into itinerary workbooks without rerunning searches.
 - Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops). Set `max_stops` to `null` or omit the key for unlimited stops.
 - Legacy `departure`/`return` itinerary keys are removed; only `outbound`/`inbound` are valid now.
 - If neither CLI nor YAML sets an output path, the run writes to `output/<local timestamp>_<TZ>.csv`.
@@ -80,4 +84,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 63ccbe0b806376b562debd98600dfef51f1b9a07
+Last commit id: b25874f0822f7069d12621f1e1b880baaa5c6601

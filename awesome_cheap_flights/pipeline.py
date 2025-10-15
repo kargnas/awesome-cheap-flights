@@ -43,8 +43,9 @@ TIME_PATTERN = re.compile(
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
 
-ITINERARY_LEG_SAMPLE_LIMIT = 10
-MAX_ITINERARY_COMBINATIONS = 0
+DEFAULT_ITINERARY_LEG_LIMIT = 0
+DEFAULT_ITINERARY_MAX_COMBINATIONS = 0
+RECOMMENDED_ITINERARY_LEG_LIMIT = 10
 
 
 console = Console(stderr=True, highlight=False)
@@ -322,12 +323,15 @@ def _get_flights_from_filter(
                 proxy=proxy,
             )
         raise exc
+ALLOWED_SEAT_CLASSES = ("economy", "premium-economy", "business", "first")
+
 
 @dataclass
 class RequestSettings:
     delay: float = 1.0
     retries: int = 2
     max_leg_results: int = 10
+    seat_class: str = "economy"
 
     def __post_init__(self) -> None:
         self.delay = float(self.delay)
@@ -343,6 +347,33 @@ class RequestSettings:
             raise ValueError(f"Invalid max leg results: {self.max_leg_results}") from exc
         if self.max_leg_results < 1:
             raise ValueError("Max leg results must be at least 1")
+        seat = str(self.seat_class or "").strip().lower()
+        if not seat:
+            raise ValueError("Seat class must be provided")
+        if seat not in ALLOWED_SEAT_CLASSES:
+            allowed = ", ".join(ALLOWED_SEAT_CLASSES)
+            raise ValueError(f"Seat class must be one of: {allowed}")
+        self.seat_class = seat
+
+
+@dataclass
+class ItinerarySettings:
+    leg_limit: int = DEFAULT_ITINERARY_LEG_LIMIT
+    max_combinations: int = DEFAULT_ITINERARY_MAX_COMBINATIONS
+
+    def __post_init__(self) -> None:
+        try:
+            self.leg_limit = int(self.leg_limit)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid itinerary leg limit: {self.leg_limit}") from exc
+        if self.leg_limit < 0:
+            raise ValueError("Itinerary leg limit must be >= 0")
+        try:
+            self.max_combinations = int(self.max_combinations)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid itinerary max combinations: {self.max_combinations}") from exc
+        if self.max_combinations < 0:
+            raise ValueError("Itinerary max combinations must be >= 0")
 
 
 @dataclass
@@ -480,6 +511,7 @@ class SearchConfig:
     request: RequestSettings
     filters: FilterSettings
     output: OutputSettings
+    itinerary: ItinerarySettings
     http_proxy: Optional[str]
     concurrency: int
     debug: bool
@@ -676,13 +708,14 @@ def fetch_leg_html(
     passenger_count: int,
     currency_code: str,
     proxy: Optional[str],
+    seat_class: str,
 ) -> str:
     flight_data = build_flight_data(origin_code, destination_code, departure_date)
     filter_payload = TFSData.from_interface(
         flight_data=flight_data,
         trip="one-way",
         passengers=Passengers(adults=passenger_count),
-        seat="economy",
+        seat=seat_class,
         max_stops=max_stops,
     )
     params = {
@@ -722,7 +755,7 @@ def fetch_leg_flights(
                 flight_data=flight_data,
                 trip="one-way",
                 passengers=Passengers(adults=config.passenger_count),
-                seat="economy",
+                seat=config.request.seat_class,
                 max_stops=max_stops,
             )
             result = _get_flights_from_filter(
@@ -739,6 +772,7 @@ def fetch_leg_flights(
                 passenger_count=config.passenger_count,
                 currency_code=config.currency_code,
                 proxy=config.http_proxy,
+                seat_class=config.request.seat_class,
             )
             if html:
                 layover_lookup = parse_layover_details(html)
@@ -990,10 +1024,8 @@ LEG_EXPORT_FIELDS = (
 def _build_plan_itinerary_combinations(
     plan: PlanConfig,
     rows: Sequence[SegmentRow],
-    *,
-    leg_sample_limit: int = ITINERARY_LEG_SAMPLE_LIMIT,
-    max_combinations: int = MAX_ITINERARY_COMBINATIONS,
-) -> Tuple[List[Dict[str, object]], bool, bool]:
+    itinerary: ItinerarySettings,
+) -> Tuple[List[Dict[str, object]], bool, bool, int, int]:
     journeys: Dict[str, List[SegmentRow]] = defaultdict(list)
     for row in rows:
         if row.variant != "scheduled":
@@ -1005,6 +1037,9 @@ def _build_plan_itinerary_combinations(
     truncated = False
     clamped = False
 
+    leg_limit = itinerary.leg_limit
+    combo_limit = itinerary.max_combinations
+
     for journey_id, journey_rows in journeys.items():
         legs_map: Dict[int, List[SegmentRow]] = defaultdict(list)
         for row in journey_rows:
@@ -1015,8 +1050,8 @@ def _build_plan_itinerary_combinations(
         leg_rows: List[List[SegmentRow]] = []
         for idx in ordered_sequences:
             flights = sorted(legs_map[idx], key=_segment_row_sort_key)
-            if leg_sample_limit and len(flights) > leg_sample_limit:
-                flights = flights[:leg_sample_limit]
+            if leg_limit > 0 and len(flights) > leg_limit:
+                flights = flights[:leg_limit]
                 clamped = True
             leg_rows.append(flights)
         for combo in product(*leg_rows):
@@ -1045,7 +1080,7 @@ def _build_plan_itinerary_combinations(
             record["total_currency"] = currency
             record["total_duration_hours"] = round(total_duration, 2) if total_duration else None
             combinations.append(record)
-            if max_combinations and len(combinations) >= max_combinations:
+            if combo_limit and len(combinations) >= combo_limit:
                 truncated = True
                 break
         if truncated:
@@ -1058,7 +1093,7 @@ def _build_plan_itinerary_combinations(
             entry.get("journey_id"),
         )
     )
-    return combinations, truncated, clamped
+    return combinations, truncated, clamped, leg_limit, combo_limit
 
 
 def _build_summary_headers(
@@ -1083,17 +1118,22 @@ def _build_summary_headers(
 
 
 def _write_plan_summary_excel(
+    config: SearchConfig,
     plan: PlanConfig,
     rows: Sequence[SegmentRow],
     csv_path: Path,
-) -> Tuple[Optional[Path], int, bool, bool]:
-    combinations, truncated, clamped = _build_plan_itinerary_combinations(plan, rows)
+) -> Tuple[Optional[Path], int, bool, bool, int, int]:
+    combinations, truncated, clamped, leg_limit, combo_limit = _build_plan_itinerary_combinations(
+        plan,
+        rows,
+        config.itinerary,
+    )
     try:
         from openpyxl import Workbook
         from openpyxl.utils import get_column_letter
     except ImportError:  # pragma: no cover - runtime guard
         _warn("openpyxl not installed; skipping Excel summary export")
-        return None, 0, truncated, clamped
+        return None, 0, truncated, clamped, leg_limit, combo_limit
 
     headers = _build_summary_headers(plan, combinations)
     workbook = Workbook()
@@ -1113,7 +1153,264 @@ def _write_plan_summary_excel(
     summary_name = f"{csv_path.stem}_itineraries.xlsx"
     summary_path = csv_path.with_name(summary_name)
     workbook.save(summary_path)
-    return summary_path, len(combinations), truncated, clamped
+    return summary_path, len(combinations), truncated, clamped, leg_limit, combo_limit
+
+
+def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
+    def get_value(key: str, default: str = "") -> str:
+        if key not in row:
+            raise ValueError(f"CSV is missing required column '{key}'")
+        return row.get(key, default)
+
+    def parse_int(value: str) -> Optional[int]:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return int(float(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid integer value '{value}'") from exc
+
+    def parse_float(value: str) -> Optional[float]:
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid float value '{value}'") from exc
+
+    def parse_bool(value: str) -> bool:
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+
+    plan_name = get_value("plan_name")
+    journey_id = get_value("journey_id")
+    journey_label = get_value("journey_label")
+    variant = get_value("variant")
+    leg_sequence_raw = get_value("leg_sequence")
+    try:
+        leg_sequence = int(leg_sequence_raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"Invalid leg_sequence '{leg_sequence_raw}'") from exc
+    origin_place = get_value("origin_place")
+    origin_code = get_value("origin_code")
+    destination_place = get_value("destination_place")
+    destination_code = get_value("destination_code")
+    hidden_via_places = get_value("hidden_via_places")
+    hidden_via_codes = get_value("hidden_via_codes")
+    departure_date = get_value("departure_date")
+    departure_at = get_value("departure_at")
+    departure_time = get_value("departure_time")
+    duration_hours = parse_float(get_value("duration_hours"))
+    airline = get_value("airline")
+    stops = get_value("stops")
+    stop_notes = get_value("stop_notes")
+    price = parse_int(get_value("price"))
+    is_best = parse_bool(get_value("is_best"))
+    currency = get_value("currency")
+
+    return SegmentRow(
+        plan_name=plan_name,
+        journey_id=journey_id,
+        journey_label=journey_label,
+        variant=variant,
+        leg_sequence=leg_sequence,
+        origin_place=origin_place,
+        origin_code=origin_code,
+        destination_place=destination_place,
+        destination_code=destination_code,
+        hidden_via_places=hidden_via_places,
+        hidden_via_codes=hidden_via_codes,
+        departure_date=departure_date,
+        departure_at=departure_at,
+        departure_time=departure_time,
+        duration_hours=duration_hours,
+        airline=airline,
+        stops=stops,
+        stop_notes=stop_notes,
+        price=price,
+        is_best=is_best,
+        currency=currency,
+    )
+
+
+def _collect_segments_from_csv(csv_path: Path) -> Dict[str, List[SegmentRow]]:
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError("CSV file has no header row")
+        rows_by_plan: Dict[str, List[SegmentRow]] = defaultdict(list)
+        for index, raw in enumerate(reader, start=1):
+            try:
+                segment = _segment_row_from_mapping(raw)
+            except ValueError as exc:
+                raise ValueError(f"Row {index} invalid: {exc}") from exc
+            rows_by_plan[segment.plan_name].append(segment)
+    return rows_by_plan
+
+
+def _infer_plan_config_from_segments(plan_name: str, rows: Sequence[SegmentRow]) -> PlanConfig:
+    if not rows:
+        raise ValueError("No rows available to infer plan configuration")
+    scheduled_map: Dict[int, List[SegmentRow]] = defaultdict(list)
+    for row in rows:
+        if row.variant == "scheduled":
+            scheduled_map[row.leg_sequence].append(row)
+    if not scheduled_map:
+        for row in rows:
+            scheduled_map[row.leg_sequence].append(row)
+    ordered_sequences = sorted(scheduled_map.keys())
+    if not ordered_sequences:
+        raise ValueError("Unable to infer leg order from CSV")
+
+    raw_path: List[str] = []
+    for seq in ordered_sequences:
+        sample = scheduled_map[seq][0]
+        if not raw_path:
+            raw_path.append(sample.origin_place)
+        if raw_path[-1] != sample.origin_place:
+            raw_path.append(sample.origin_place)
+        raw_path.append(sample.destination_place)
+    dedup_path: List[str] = []
+    for place in raw_path:
+        if not dedup_path or dedup_path[-1] != place:
+            dedup_path.append(place)
+    if len(dedup_path) < 2:
+        raise ValueError("Inferred path must contain at least two points")
+
+    place_codes: Dict[str, List[str]] = {}
+    codes_map: Dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        codes_map[row.origin_place].add(row.origin_code)
+        codes_map[row.destination_place].add(row.destination_code)
+    for place, codes in codes_map.items():
+        place_codes[place] = sorted(code for code in codes if code)
+        if not place_codes[place]:
+            place_codes[place] = [""]
+
+    departures: Dict[Tuple[str, str], LegDeparture] = {}
+    for seq in ordered_sequences:
+        samples = scheduled_map[seq]
+        sample = samples[0]
+        key = (sample.origin_place, sample.destination_place)
+        dates = sorted({row.departure_date for row in samples if row.departure_date})
+        if not dates:
+            dates = ["1970-01-01"]
+        departures[key] = LegDeparture(dates=dates)
+
+    options = PlanOptions(include_hidden=any(row.variant == "hidden" for row in rows), max_hidden_hops=1)
+    plan_filters: Dict[Tuple[str, str], LegFilter] = {}
+    return PlanConfig(
+        name=plan_name,
+        places=place_codes,
+        path=dedup_path,
+        departures=departures,
+        options=options,
+        filters=plan_filters,
+        output=None,
+    )
+
+
+def _build_config_from_rows(rows_by_plan: Dict[str, List[SegmentRow]]) -> SearchConfig:
+    plans: List[PlanConfig] = []
+    for plan_name, segments in rows_by_plan.items():
+        plan = _infer_plan_config_from_segments(plan_name, segments)
+        plans.append(plan)
+    if not plans:
+        raise ValueError("CSV does not contain any plan data")
+
+    currency = next(
+        (row.currency for segments in rows_by_plan.values() for row in segments if row.currency),
+        "USD",
+    )
+    return SearchConfig(
+        schema_version="v2",
+        currency_code=currency,
+        passenger_count=1,
+        request=RequestSettings(),
+        filters=FilterSettings(),
+        output=OutputSettings(),
+        itinerary=ItinerarySettings(),
+        http_proxy=None,
+        concurrency=1,
+        debug=False,
+        plans=plans,
+    )
+
+
+def build_config_from_csv(csv_path: Path) -> SearchConfig:
+    rows_by_plan = _collect_segments_from_csv(csv_path)
+    return _build_config_from_rows(rows_by_plan)
+
+
+def convert_csv_to_workbooks(config: Optional[SearchConfig], csv_path: Path) -> None:
+    rows_by_plan = _collect_segments_from_csv(csv_path)
+    if config is None:
+        config = _build_config_from_rows(rows_by_plan)
+    plan_lookup: Dict[str, PlanConfig] = {plan.name: plan for plan in config.plans}
+
+    processed = False
+    for plan_name, plan_rows in rows_by_plan.items():
+        plan = plan_lookup.get(plan_name)
+        if plan is None:
+            try:
+                plan = _infer_plan_config_from_segments(plan_name, plan_rows)
+            except ValueError as exc:
+                _warn(f"Cannot infer plan '{plan_name}': {exc}")
+                continue
+            config.plans = list(config.plans) + [plan]
+            plan_lookup[plan_name] = plan
+        fake_csv_path = csv_path.with_name(f"{csv_path.stem}_{plan_name}.csv")
+        (
+            workbook_path,
+            itinerary_count,
+            truncated,
+            clamped,
+            leg_limit,
+            combo_limit,
+        ) = _write_plan_summary_excel(
+            config,
+            plan,
+            plan_rows,
+            fake_csv_path,
+        )
+        processed = True
+        if workbook_path is not None:
+            console.log(
+                f"[green]{plan_name}: itineraries workbook saved with {itinerary_count} rows. Path: {workbook_path}.[/]"
+            )
+            limit_label = "∞" if leg_limit == 0 else str(leg_limit)
+            recommended_limit_label = (
+                "∞" if RECOMMENDED_ITINERARY_LEG_LIMIT == 0 else str(RECOMMENDED_ITINERARY_LEG_LIMIT)
+            )
+            combo_label = "∞" if combo_limit == 0 else str(combo_limit)
+            console.log(
+                (
+                    f"[cyan]{plan_name}: itinerary leg limit {limit_label} (recommended <= {recommended_limit_label}), "
+                    f"max combinations {combo_label}.[/]"
+                )
+            )
+            if clamped:
+                _warn(
+                    (
+                        "Itinerary workbook limited to the first "
+                        f"{leg_limit} flights per leg."
+                        " Adjust via defaults.itinerary.leg_limit or --itinerary-leg-limit."
+                    )
+                )
+            if truncated:
+                _warn(
+                    (
+                        "Itinerary workbook truncated after "
+                        f"{combo_limit} combinations."
+                        " Adjust via defaults.itinerary.max_combinations or --itinerary-max-combos."
+                    )
+                )
+
+    if not processed:
+        _warn(f"No matching plans found in {csv_path}")
 
 
 def _build_progress_label(
@@ -1567,7 +1864,15 @@ def execute_search(config: SearchConfig) -> List[SegmentRow]:
 
     for result in plan_results:
         write_csv(result.rows, result.output_path, include_header_only=True)
-        workbook_path, itinerary_count, truncated, clamped = _write_plan_summary_excel(
+        (
+            workbook_path,
+            itinerary_count,
+            truncated,
+            clamped,
+            leg_limit,
+            combo_limit,
+        ) = _write_plan_summary_excel(
+            config,
             result.plan,
             result.rows,
             result.output_path,
@@ -1580,18 +1885,31 @@ def execute_search(config: SearchConfig) -> List[SegmentRow]:
             console.log(
                 f"[green]{result.plan.name}: itineraries workbook saved with {itinerary_count} rows. Path: {workbook_path}.[/]"
             )
+            limit_label = "∞" if leg_limit == 0 else str(leg_limit)
+            recommended_limit_label = (
+                "∞" if RECOMMENDED_ITINERARY_LEG_LIMIT == 0 else str(RECOMMENDED_ITINERARY_LEG_LIMIT)
+            )
+            combo_label = "∞" if combo_limit == 0 else str(combo_limit)
+            console.log(
+                (
+                    f"[cyan]{result.plan.name}: itinerary leg limit {limit_label}"
+                    f" (recommended <= {recommended_limit_label}), max combinations {combo_label}.[/]"
+                )
+            )
             if clamped:
                 _warn(
                     (
                         "Itinerary workbook limited to the first "
-                        f"{ITINERARY_LEG_SAMPLE_LIMIT} flights per leg to control size"
+                        f"{leg_limit} flights per leg."
+                        " Adjust via defaults.itinerary.leg_limit or --itinerary-leg-limit."
                     )
                 )
             if truncated:
                 _warn(
                     (
                         "Itinerary workbook truncated after "
-                        f"{MAX_ITINERARY_COMBINATIONS} combinations"
+                        f"{combo_limit} combinations."
+                        " Adjust via defaults.itinerary.max_combinations or --itinerary-max-combos."
                     )
                 )
 
@@ -1606,11 +1924,17 @@ def execute_search(config: SearchConfig) -> List[SegmentRow]:
 
 
 __all__ = [
+    "DEFAULT_ITINERARY_LEG_LIMIT",
+    "DEFAULT_ITINERARY_MAX_COMBINATIONS",
+    "RECOMMENDED_ITINERARY_LEG_LIMIT",
     "SearchConfig",
     "LegFlight",
     "SegmentRow",
     "PlanRunResult",
+    "ItinerarySettings",
     "run_search",
     "execute_search",
+    "convert_csv_to_workbooks",
+    "build_config_from_csv",
     "RunInterrupted",
 ]
