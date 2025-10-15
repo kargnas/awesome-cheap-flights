@@ -404,10 +404,19 @@ class FilterSettings:
 class OutputSettings:
     directory: Path = Path("output")
     filename_pattern: str = "{timestamp}_{plan}.csv"
+    filename: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.directory = Path(self.directory)
-        pattern = str(self.filename_pattern)
+        if self.filename is not None:
+            name = str(self.filename).strip()
+            if not name:
+                raise ValueError("Output filename must be non-empty")
+            if not name.endswith(".csv"):
+                name = f"{name}.csv"
+            self.filename = name
+            return
+        pattern = str(self.filename_pattern).strip() or "{timestamp}_{plan}"
         if "{plan}" not in pattern:
             pattern = f"{{plan}}_{pattern}"
         if "{timestamp}" not in pattern:
@@ -911,7 +920,7 @@ def _slugify_plan_name(value: str) -> str:
 def _resolve_plan_output_path(config: SearchConfig, plan: PlanConfig) -> Path:
     directory = config.output.directory
     pattern = config.output.filename_pattern
-    filename_override: Optional[str] = None
+    filename_override: Optional[str] = config.output.filename
     if plan.output is not None:
         if plan.output.directory is not None:
             directory = plan.output.directory

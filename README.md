@@ -55,7 +55,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Copy sample.config.yaml into config.yaml before editing routes.
 - Update config.yaml to adjust places, paths, or windows.
 - Set UV_CACHE_DIR=$(pwd)/.cache/uv to isolate uv cache.
-- Omit --output to write timestamped files inside output/ automatically.
+- Use --output <path> to force a specific CSV file, directory, or pattern. Omit it to keep timestamped files inside output/.
 - Combine CLI overrides with commas or repeated flags for airports.
 - Use `--csv-only <path>` to turn saved CSVs into fresh itinerary workbooks without re-running searches.
 - Sample plan completes within five minutes on modern laptops.

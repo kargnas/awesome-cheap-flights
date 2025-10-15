@@ -355,13 +355,32 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         raise ValueError(
             f"Unknown output option(s): {', '.join(sorted(unexpected_output))}"
         )
-    output_directory = strip_comment(output_block.get("directory", DEFAULT_OUTPUT_DIR)) or str(
+    output_directory_raw = strip_comment(output_block.get("directory", DEFAULT_OUTPUT_DIR)) or str(
         DEFAULT_OUTPUT_DIR
     )
     output_pattern = strip_comment(
         output_block.get("filename_pattern", DEFAULT_FILENAME_PATTERN)
     ) or DEFAULT_FILENAME_PATTERN
-    output_settings = OutputSettings(directory=output_directory, filename_pattern=output_pattern)
+    output_directory: Path | str = output_directory_raw
+    output_filename: Optional[str] = None
+    if args.output:
+        override_raw = strip_comment(args.output)
+        if override_raw:
+            override_path = Path(override_raw)
+            if "{" in override_raw or "}" in override_raw:
+                if override_path.parent != Path("."):
+                    output_directory = override_path.parent
+                output_pattern = override_path.name or output_pattern
+            elif override_path.suffix.lower() == ".csv":
+                output_directory = override_path.parent if override_path.parent != Path("") else Path(".")
+                output_filename = override_path.name
+            else:
+                output_directory = override_path
+    output_settings = OutputSettings(
+        directory=output_directory,
+        filename_pattern=output_pattern,
+        filename=output_filename,
+    )
 
     itinerary_block = defaults_block.get("itinerary", {})
     if itinerary_block is None:
@@ -473,6 +492,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--csv-only",
         help="Convert an existing segment CSV into an itinerary workbook and exit",
+    )
+    parser.add_argument(
+        "--output",
+        help="Override output location (CSV file, directory, or pattern)",
     )
     parser.add_argument(
         "--debug",
