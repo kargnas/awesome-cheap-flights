@@ -8,6 +8,7 @@ defaults:
     delay: 0.5             # Delay between requests in seconds.
     retries: 1             # Retry count for failed fetches.
     max_leg_results: 3     # Maximum flights stored per leg.
+    seat: economy          # Cabin class (economy, premium-economy, business, first).
   filters:
     max_stops: 1           # Global stop allowance per leg.
     include_hidden: true   # Enable hidden-leg discovery everywhere.
@@ -15,6 +16,9 @@ defaults:
   output:
     directory: output
     filename_pattern: "{plan}_{timestamp}.csv"
+  itinerary:
+    leg_limit: 0           # 0 means unlimited (set 10 for a conservative cap).
+    max_combinations: 0    # 0 means unlimited itinerary combinations.
 
 # Define a single travel plan.
 plans:

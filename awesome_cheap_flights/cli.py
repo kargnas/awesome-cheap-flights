@@ -4,12 +4,15 @@ import argparse
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import yaml
 
 from .pipeline import (
+    DEFAULT_ITINERARY_LEG_LIMIT,
+    DEFAULT_ITINERARY_MAX_COMBINATIONS,
     FilterSettings,
+    ItinerarySettings,
     LegDeparture,
     LegFilter,
     PlanConfig,
@@ -18,6 +21,8 @@ from .pipeline import (
     RequestSettings,
     SearchConfig,
     OutputSettings,
+    convert_csv_to_workbooks,
+    build_config_from_csv,
     execute_search,
 )
 
@@ -38,6 +43,12 @@ DEFAULT_OUTPUT_DIR = Path("output")
 DEFAULT_FILENAME_PATTERN = "{plan}_{timestamp}.csv"
 DEFAULT_DEBUG = False
 DEFAULT_CONCURRENCY = 1
+DEFAULT_SEAT_CLASS = "economy"
+ALLOWED_SEAT_CLASSES = ("economy", "premium-economy", "business", "first")
+ALLOWED_REQUEST_KEYS = {"delay", "retries", "max_leg_results", "seat"}
+ALLOWED_FILTER_KEYS = {"max_stops", "include_hidden", "max_hidden_hops"}
+ALLOWED_OUTPUT_KEYS = {"directory", "filename_pattern"}
+ALLOWED_ITINERARY_KEYS = {"leg_limit", "max_combinations"}
 
 
 def strip_comment(value: Any) -> str:
@@ -307,15 +318,29 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     request_block = defaults_block.get("request", {})
     if not isinstance(request_block, dict):
         raise ValueError("'defaults.request' must be a mapping")
+    unexpected_request = set(request_block.keys()) - ALLOWED_REQUEST_KEYS
+    if unexpected_request:
+        raise ValueError(
+            f"Unknown request option(s): {', '.join(sorted(unexpected_request))}"
+        )
+    seat_value = strip_comment(request_block.get("seat", DEFAULT_SEAT_CLASS)) or DEFAULT_SEAT_CLASS
+    if args.seat_class:
+        seat_value = strip_comment(args.seat_class) or DEFAULT_SEAT_CLASS
     request_settings = RequestSettings(
         delay=request_block.get("delay", DEFAULT_REQUEST_DELAY),
         retries=request_block.get("retries", DEFAULT_MAX_RETRIES),
         max_leg_results=request_block.get("max_leg_results", DEFAULT_MAX_LEG_RESULTS),
+        seat_class=seat_value,
     )
 
     filters_block = defaults_block.get("filters", {})
     if not isinstance(filters_block, dict):
         raise ValueError("'defaults.filters' must be a mapping")
+    unexpected_filters = set(filters_block.keys()) - ALLOWED_FILTER_KEYS
+    if unexpected_filters:
+        raise ValueError(
+            f"Unknown filters option(s): {', '.join(sorted(unexpected_filters))}"
+        )
     filter_settings = FilterSettings(
         max_stops=filters_block.get("max_stops", DEFAULT_MAX_STOPS),
         include_hidden=filters_block.get("include_hidden", DEFAULT_INCLUDE_HIDDEN),
@@ -325,13 +350,62 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
     output_block = defaults_block.get("output", {})
     if not isinstance(output_block, dict):
         raise ValueError("'defaults.output' must be a mapping")
-    output_directory = strip_comment(output_block.get("directory", DEFAULT_OUTPUT_DIR)) or str(
+    unexpected_output = set(output_block.keys()) - ALLOWED_OUTPUT_KEYS
+    if unexpected_output:
+        raise ValueError(
+            f"Unknown output option(s): {', '.join(sorted(unexpected_output))}"
+        )
+    output_directory_raw = strip_comment(output_block.get("directory", DEFAULT_OUTPUT_DIR)) or str(
         DEFAULT_OUTPUT_DIR
     )
     output_pattern = strip_comment(
         output_block.get("filename_pattern", DEFAULT_FILENAME_PATTERN)
     ) or DEFAULT_FILENAME_PATTERN
-    output_settings = OutputSettings(directory=output_directory, filename_pattern=output_pattern)
+    output_directory: Path | str = output_directory_raw
+    output_filename: Optional[str] = None
+    if args.output:
+        override_raw = strip_comment(args.output)
+        if override_raw:
+            override_path = Path(override_raw)
+            if "{" in override_raw or "}" in override_raw:
+                if override_path.parent != Path("."):
+                    output_directory = override_path.parent
+                output_pattern = override_path.name or output_pattern
+            elif override_path.suffix.lower() == ".csv":
+                output_directory = override_path.parent if override_path.parent != Path("") else Path(".")
+                output_filename = override_path.name
+            else:
+                output_directory = override_path
+    output_settings = OutputSettings(
+        directory=output_directory,
+        filename_pattern=output_pattern,
+        filename=output_filename,
+    )
+
+    itinerary_block = defaults_block.get("itinerary", {})
+    if itinerary_block is None:
+        itinerary_block = {}
+    if not isinstance(itinerary_block, dict):
+        raise ValueError("'defaults.itinerary' must be a mapping")
+    unexpected_itinerary = set(itinerary_block.keys()) - ALLOWED_ITINERARY_KEYS
+    if unexpected_itinerary:
+        raise ValueError(
+            f"Unknown itinerary option(s): {', '.join(sorted(unexpected_itinerary))}"
+        )
+    leg_limit_value = itinerary_block.get("leg_limit", DEFAULT_ITINERARY_LEG_LIMIT)
+    if isinstance(leg_limit_value, str):
+        leg_limit_value = strip_comment(leg_limit_value)
+    max_combo_value = itinerary_block.get("max_combinations", DEFAULT_ITINERARY_MAX_COMBINATIONS)
+    if isinstance(max_combo_value, str):
+        max_combo_value = strip_comment(max_combo_value)
+    if args.itinerary_leg_limit is not None:
+        leg_limit_value = args.itinerary_leg_limit
+    if args.itinerary_max_combos is not None:
+        max_combo_value = args.itinerary_max_combos
+    itinerary_settings = ItinerarySettings(
+        leg_limit=leg_limit_value,
+        max_combinations=max_combo_value,
+    )
 
     http_proxy = strip_comment(config_data.get("http_proxy", "")) or None
     if args.http_proxy:
@@ -362,6 +436,7 @@ def build_config(args: argparse.Namespace) -> SearchConfig:
         request=request_settings,
         filters=filter_settings,
         output=output_settings,
+        itinerary=itinerary_settings,
         http_proxy=http_proxy,
         concurrency=concurrency_value,
         debug=debug_flag,
@@ -400,6 +475,29 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Number of plan journeys to process in parallel",
     )
     parser.add_argument(
+        "--seat-class",
+        choices=ALLOWED_SEAT_CLASSES,
+        help="Preferred seat class to request (default: economy)",
+    )
+    parser.add_argument(
+        "--itinerary-leg-limit",
+        type=int,
+        help="Maximum flights per leg when generating itinerary combinations (0 = unlimited)",
+    )
+    parser.add_argument(
+        "--itinerary-max-combos",
+        type=int,
+        help="Maximum itinerary combinations to export (0 = unlimited)",
+    )
+    parser.add_argument(
+        "--csv-only",
+        help="Convert an existing segment CSV into an itinerary workbook and exit",
+    )
+    parser.add_argument(
+        "--output",
+        help="Override output location (CSV file, directory, or pattern)",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug logging",
@@ -409,7 +507,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    config = build_config(args)
+    config: Optional[SearchConfig] = None
+    config_available = bool(args.config) or bool(os.getenv(CONFIG_ENV_VAR))
+    if not args.csv_only or config_available:
+        config = build_config(args)
+    if args.csv_only:
+        csv_path = Path(args.csv_only)
+        if config is None:
+            config = build_config_from_csv(csv_path)
+        convert_csv_to_workbooks(config, csv_path)
+        return 0
+    if config is None:
+        raise ValueError("Configuration is required when running searches")
     execute_search(config)
     return 0
 
