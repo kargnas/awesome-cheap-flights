@@ -14,6 +14,7 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 - Seat class selector supports economy, premium-economy, business, and first.
 - Itinerary sampling knobs and CSV-to-Excel conversion keep exports in your control.
 - CSV rows expose variant metadata for hidden journeys.
+- CSV rows now include seat_class and hidden-leg departure timestamps.
 - Rich logging prints overview tables and elapsed minutes.
 
 ## Examples
@@ -139,6 +140,8 @@ Each plan expands airport combinations and departure calendars automatically.
 - duration_hours stores decimal leg durations.
 - airline holds the carrier label.
 - stops and stop_notes capture layover counts and codes.
+- seat_class records the requested cabin per segment.
+- hidden_departure_at lists hidden-hop departure times when available.
 - price stores integer fare digits.
 - is_best mirrors Google Flights highlights.
 - currency shows the fare currency code.
@@ -146,7 +149,7 @@ Each plan expands airport combinations and departure calendars automatically.
 ## Excel itinerary workbook
 - Each run emits `<csv_stem>_itineraries.xlsx` alongside the CSV export.
 - Columns follow `<origin_place>-><destination_place>_<field>` naming (e.g., `home->las_price`).
-- Per-leg fields cover price, currency, departure timestamps, airline, stops, stop_notes, duration_hours, and variant flags.
+- Per-leg fields cover price, currency, seat_class, departure timestamps (including hidden departures), airline, stops, stop_notes, duration_hours, and variant flags.
 - Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours` when data is complete.
 - Tune `leg_limit` (flights per leg, 0 = unlimited, 10 recommended) and `max_combinations` (0 = unlimited) to balance coverage versus file size.
 
@@ -162,4 +165,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: b25874f0822f7069d12621f1e1b880baaa5c6601
+Last commit id: 2bf372667ca0784a16bf533f05e71d63cc703e50

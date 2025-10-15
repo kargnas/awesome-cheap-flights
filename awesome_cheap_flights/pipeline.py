@@ -42,6 +42,7 @@ TIME_PATTERN = re.compile(
 
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
+TIME_LABEL_PATTERN = re.compile(r"(\d{1,2}:\d{2})\s*(AM|PM)?", re.IGNORECASE)
 
 DEFAULT_ITINERARY_LEG_LIMIT = 0
 DEFAULT_ITINERARY_MAX_COMBINATIONS = 0
@@ -545,6 +546,15 @@ class LegFlight:
     duration_hours: Optional[float]
     price: Optional[int]
     is_best: bool
+    seat_class: str
+    hidden_departure_at: str
+
+
+@dataclass
+class LayoverDetails:
+    stop_text: str
+    layover_codes: str
+    hidden_departure_at: str
 
 
 @dataclass
@@ -570,6 +580,8 @@ class SegmentRow:
     price: Optional[int]
     is_best: bool
     currency: str
+    seat_class: str
+    hidden_departure_at: str
 
 
 @dataclass
@@ -621,6 +633,33 @@ def parse_duration_to_hours(raw: str) -> Optional[float]:
     return round(value, 2)
 
 
+def _normalize_time_label(value: str) -> str:
+    token = value.strip().upper().replace(".", "")
+    for pattern in ("%I:%M %p", "%H:%M"):
+        try:
+            dt = datetime.strptime(token, pattern)
+            return dt.strftime("%H:%M")
+        except ValueError:
+            continue
+    return token
+
+
+def _build_hidden_departure_labels(values: Sequence[str]) -> str:
+    labels: List[str] = []
+    for entry in values:
+        if not entry:
+            continue
+        code_match = re.search(r"[A-Z]{3}", entry)
+        code = code_match.group(0) if code_match else ""
+        for match in TIME_LABEL_PATTERN.finditer(entry):
+            label = _normalize_time_label(match.group(0))
+            if code:
+                label = f"{code} {label}"
+            if label and label not in labels:
+                labels.append(label)
+    return " · ".join(labels)
+
+
 def split_datetime_components(timestamp: str) -> Tuple[str, str]:
     if not timestamp:
         return "", ""
@@ -669,9 +708,9 @@ def safe_text(node) -> str:
     return node.text(strip=True) if node is not None else ""
 
 
-def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], Tuple[str, str]]:
+def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], LayoverDetails]:
     parser = LexborHTMLParser(html)
-    details: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
+    details: Dict[Tuple[str, str, str], LayoverDetails] = {}
 
     for idx, container in enumerate(parser.css('div[jsname="IWWDBc"], div[jsname="YdtKid"]')):
         items = container.css("ul.Rk10dc li")
@@ -693,8 +732,16 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], Tuple[str, st
                 if val and val not in layover_values:
                     layover_values.append(val)
             layover_codes = extract_stop_codes(" ".join(layover_values))
+            hidden_departure_at = _build_hidden_departure_labels(layover_values)
             key = (name, " ".join(departure_time.split()), price_clean)
-            details.setdefault(key, (stop_text, layover_codes))
+            details.setdefault(
+                key,
+                LayoverDetails(
+                    stop_text=stop_text,
+                    layover_codes=layover_codes,
+                    hidden_departure_at=hidden_departure_at,
+                ),
+            )
 
     return details
 
@@ -746,7 +793,7 @@ def fetch_leg_flights(
 ) -> List[LegFlight]:
     last_exc: Optional[Exception] = None
     result: Optional[Result] = None
-    layover_lookup: Dict[Tuple[str, str, str], Tuple[str, str]] = {}
+    layover_lookup: Dict[Tuple[str, str, str], LayoverDetails] = {}
 
     for attempt in range(1, config.request.retries + 1):
         try:
@@ -820,8 +867,11 @@ def fetch_leg_flights(
         departure_std = standardize_time(flight.departure, base_year)
         if not departure_std:
             continue
-        stop_text, stop_detail = layover_lookup.get(key, ("", ""))
-        notes = stop_detail or extract_stop_codes(stop_text)
+        layover = layover_lookup.get(key)
+        stop_text = layover.stop_text if layover else ""
+        layover_codes = layover.layover_codes if layover else ""
+        hidden_departure = layover.hidden_departure_at if layover else ""
+        notes = layover_codes or extract_stop_codes(stop_text)
         flights.append(
             LegFlight(
                 airline_name=flight.name,
@@ -831,6 +881,8 @@ def fetch_leg_flights(
                 duration_hours=parse_duration_to_hours(flight.duration),
                 price=parse_price_to_int(flight.price),
                 is_best=flight.is_best,
+                seat_class=config.request.seat_class,
+                hidden_departure_at=hidden_departure,
             )
         )
 
@@ -1011,12 +1063,14 @@ def _build_leg_key(row: SegmentRow) -> str:
 LEG_EXPORT_FIELDS = (
     "price",
     "currency",
+    "seat_class",
     "departure_at",
     "departure_time",
     "airline",
     "stops",
     "stop_notes",
     "duration_hours",
+    "hidden_departure_at",
     "variant",
 )
 
@@ -1183,6 +1237,12 @@ def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
     def parse_bool(value: str) -> bool:
         return value.strip().lower() in {"1", "true", "yes", "y"}
 
+    def get_optional_value(key: str, default: str = "") -> str:
+        value = row.get(key, default)
+        if value is None:
+            return ""
+        return value
+
     plan_name = get_value("plan_name")
     journey_id = get_value("journey_id")
     journey_label = get_value("journey_label")
@@ -1208,6 +1268,8 @@ def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
     price = parse_int(get_value("price"))
     is_best = parse_bool(get_value("is_best"))
     currency = get_value("currency")
+    seat_class = get_optional_value("seat_class", "")
+    hidden_departure_at = get_optional_value("hidden_departure_at", "")
 
     return SegmentRow(
         plan_name=plan_name,
@@ -1231,6 +1293,8 @@ def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
         price=price,
         is_best=is_best,
         currency=currency,
+        seat_class=seat_class,
+        hidden_departure_at=hidden_departure_at,
     )
 
 
@@ -1509,6 +1573,8 @@ def _build_segment_rows(
                 price=flight.price,
                 is_best=flight.is_best,
                 currency=config.currency_code,
+                seat_class=flight.seat_class,
+                hidden_departure_at=flight.hidden_departure_at,
             )
         )
     return rows

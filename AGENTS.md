@@ -10,6 +10,18 @@
 - Example: Summary delayed. Retry in about 5 min.
   </writing_style>
 
+<uxui_writing_style>
+- Audience: End-user product surfaces only, never Codex responses.
+- Tone: Natural UI concise English (Option 4 selection).
+- Structure: Short clauses, ≤12 words, period at end.
+- Time references: Express in minutes.
+- Example 1: Summary pending. Retry in 5 min.
+- Example 2: Seating check running. Wait 3 min.
+- Example 3: Refund in progress. Up to 10 min.
+- Example 4: Fare refresh active. Needs 4 min.
+- Example 5: Boarding pass queue. Notice in 2 min.
+</uxui_writing_style>
+
 ## Project Structure & Module Organization
 
 - `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs; direct module execution now exits via `SystemExit(main())`.
@@ -84,4 +96,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: b25874f0822f7069d12621f1e1b880baaa5c6601
+Last commit id: 2bf372667ca0784a16bf533f05e71d63cc703e50
