@@ -7,6 +7,7 @@ import pytest
 
 from awesome_cheap_flights.pipeline import (
     FilterSettings,
+    ItinerarySettings,
     LegDeparture,
     LegFlight,
     OutputSettings,
@@ -43,7 +44,9 @@ def _make_config(plan: PlanConfig) -> SearchConfig:
         request=RequestSettings(delay=0.0, retries=1, max_leg_results=5),
         filters=FilterSettings(max_stops=1, include_hidden=True, max_hidden_hops=1),
         output=OutputSettings(directory="output", filename_pattern="{plan}_{timestamp}.csv"),
+        itinerary=ItinerarySettings(),
         http_proxy=None,
+        google_cookie=None,
         concurrency=1,
         debug=False,
         plans=[plan],
@@ -67,6 +70,8 @@ def test_run_plan_generates_hidden_rows(monkeypatch: pytest.MonkeyPatch, tmp_pat
                     duration_hours=3.5,
                     price=150,
                     is_best=True,
+                    seat_class="economy",
+                    hidden_departure_at="",
                 )
             ]
         if origin == "HKG" and destination == "SIN":
@@ -79,6 +84,8 @@ def test_run_plan_generates_hidden_rows(monkeypatch: pytest.MonkeyPatch, tmp_pat
                     duration_hours=4.0,
                     price=200,
                     is_best=True,
+                    seat_class="economy",
+                    hidden_departure_at="",
                 )
             ]
         if origin == "ICN" and destination == "SIN":
@@ -91,6 +98,8 @@ def test_run_plan_generates_hidden_rows(monkeypatch: pytest.MonkeyPatch, tmp_pat
                     duration_hours=6.5,
                     price=180,
                     is_best=False,
+                    seat_class="economy",
+                    hidden_departure_at="",
                 )
             ]
         return []
