@@ -76,6 +76,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Itinerary leg/combo limits (0 = unlimited) tame workbook size without losing control.
 - Filters hold max_stops, include_hidden, and max_hidden_hops limits.
 - Departures allow per-leg max_stops overrides alongside date selectors.
+- Date windows spanning more than seven days trigger an extreme warning because runs can take hours and risk Google anti-abuse blocks.
 - Output directory and filename_pattern customize CSV targets.
 - Plans list places, path, departures, filters, and options blocks.
 - Options include include_hidden toggles and hop caps per plan.
