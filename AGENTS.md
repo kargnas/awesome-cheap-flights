@@ -42,6 +42,7 @@
 - Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (default unlimited per leg; clamp via `leg_limit`).
 - CLI surfaces itinerary limits and recommended values when exporting workbooks.
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
+- Legs spanning more than seven departure days emit an extreme warning because those runs can last hours and invite Google anti-abuse throttling.
 
 ## Build, Test, and Development Commands
 
@@ -83,6 +84,7 @@
 - Use the `passengers` key to control the number of adult seats (defaults to 1).
 - Add `request.seat` or `--seat-class` to select economy, premium-economy, business, or first cabins.
 - Control Excel growth with `defaults.itinerary.leg_limit` / `max_combinations` or the CLI flags `--itinerary-leg-limit` / `--itinerary-max-combos`.
+- Keep date ranges to seven days or fewer when possible; longer spans raise extreme warnings and dramatically increase runtime risk.
 - Use `--csv-only` to convert existing CSV exports into itinerary workbooks without rerunning searches.
 - Clamp layovers with `max_stops` (0=nonstop, 1=one stop, 2=two stops). Set `max_stops` to `null` or omit the key for unlimited stops.
 - Legacy `departure`/`return` itinerary keys are removed; only `outbound`/`inbound` are valid now.
@@ -96,4 +98,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: 2bf372667ca0784a16bf533f05e71d63cc703e50
+Last commit id: 8259ee7eb6b88a0063dadbc7641542dcc60ae03e

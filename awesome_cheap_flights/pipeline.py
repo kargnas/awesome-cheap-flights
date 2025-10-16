@@ -1743,6 +1743,30 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
 
     place_keys = list(plan.places.keys())
     code_options = [plan.places[key] for key in place_keys]
+    long_span_alerts: List[str] = []
+    for origin, destination in edges:
+        entry = plan.departures[(origin, destination)]
+        unique_dates = sorted({date_token for date_token in entry.dates})
+        parsed_dates = [
+            datetime.strptime(date_token, "%Y-%m-%d") for date_token in unique_dates
+        ]
+        span_days = (
+            (max(parsed_dates) - min(parsed_dates)).days + 1 if parsed_dates else 0
+        )
+        if len(unique_dates) > 7 or span_days > 7:
+            long_span_alerts.append(
+                (
+                    "EXTREME WARNING: Plan '{plan}' leg {origin}->{destination} "
+                    "covers {count} departure days across {span} days. Expect "
+                    "multi-hour runs and possible Google anti-abuse blocks."
+                ).format(
+                    plan=plan.name,
+                    origin=origin,
+                    destination=destination,
+                    count=len(unique_dates),
+                    span=span_days,
+                )
+            )
     executions: List[PlanExecution] = []
     for codes in product(*code_options):
         assignment = dict(zip(place_keys, codes))
@@ -1753,6 +1777,8 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
     total_steps = len(executions)
     rows: List[SegmentRow] = []
     with ProgressReporter(total_steps, config=config, plan=plan, output_path=output_path) as reporter:
+        for message in long_span_alerts:
+            _warn(message, reporter)
         executor_ref: Optional[ThreadPoolExecutor] = None
         futures_map: Optional[Dict[Future, Tuple[int, PlanExecution, str, str]]] = None
         tasks: List[Tuple[int, PlanExecution, str, str]] = []
