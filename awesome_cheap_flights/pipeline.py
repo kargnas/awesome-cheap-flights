@@ -252,24 +252,68 @@ def _debug_hint(debug: bool) -> str:
     return "" if debug else " (re-run with --debug to view full error)"
 
 
-def _core_fetch(params: Dict[str, str], proxy: Optional[str]) -> object:
-    client = Client(impersonate="chrome_126", verify=False, proxy=proxy)
+PLAYWRIGHT_COOKIE_TEMPLATE = """import asyncio
+import sys
+from playwright.async_api import async_playwright
+
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_extra_http_headers({{"Cookie": {cookie}}})
+        await page.goto({url})
+        locator = page.locator('.eQ35Ce')
+        await locator.wait_for()
+        body = await page.evaluate(
+            '() => document.querySelector("[role=\\"main\\"]").innerHTML'
+        )
+        await browser.close()
+    sys.stdout.write(body)
+
+asyncio.run(main())
+"""
+
+
+def _normalize_cookie_header(cookie: Optional[str]) -> Optional[str]:
+    if cookie is None:
+        return None
+    trimmed = str(cookie).strip()
+    return trimmed or None
+
+
+def _build_playwright_code(url: str, cookie: Optional[str]) -> str:
+    if not _normalize_cookie_header(cookie):
+        return PLAYWRIGHT_FALLBACK_CODE % url
+    url_literal = json.dumps(url)
+    cookie_literal = json.dumps(cookie)
+    return PLAYWRIGHT_COOKIE_TEMPLATE.format(url=url_literal, cookie=cookie_literal)
+
+
+def _core_fetch(
+    params: Dict[str, str],
+    proxy: Optional[str],
+    cookie: Optional[str],
+) -> object:
+    headers = None
+    cookie_header = _normalize_cookie_header(cookie)
+    if cookie_header:
+        headers = {"Cookie": cookie_header}
+    client = Client(impersonate="chrome_126", verify=False, proxy=proxy, headers=headers)
     res = client.get("https://www.google.com/travel/flights", params=params)
     assert res.status_code == 200, f"{res.status_code} Result: {res.text_markdown}"
     return res
 
 
-def _fallback_fetch(params: Dict[str, str], proxy: Optional[str]) -> object:
+def _fallback_fetch(params: Dict[str, str], proxy: Optional[str], cookie: Optional[str]) -> object:
     client = Client(impersonate="chrome_100", verify=False, proxy=proxy)
+    url = "https://www.google.com/travel/flights" + "?" + "&".join(
+        f"{k}={v}" for k, v in params.items()
+    )
+    code = _build_playwright_code(url, cookie)
     res = client.post(
         "https://try.playwright.tech/service/control/run",
         json={
-            "code": PLAYWRIGHT_FALLBACK_CODE
-            % (
-                "https://www.google.com/travel/flights"
-                + "?"
-                + "&".join(f"{k}={v}" for k, v in params.items())
-            ),
+            "code": code,
             "language": "python",
         },
     )
@@ -289,6 +333,7 @@ def _get_flights_from_filter(
     currency: str,
     mode: str = "common",
     proxy: Optional[str] = None,
+    cookie: Optional[str] = None,
 ) -> Result:
     data = filter_payload.as_b64()
     params = {
@@ -301,16 +346,16 @@ def _get_flights_from_filter(
     def resolve(mode_value: str) -> object:
         if mode_value in {"common", "fallback"}:
             try:
-                return _core_fetch(params, proxy)
+                return _core_fetch(params, proxy, cookie)
             except AssertionError as exc:
                 if mode_value == "fallback":
-                    return _fallback_fetch(params, proxy)
+                    return _fallback_fetch(params, proxy, cookie)
                 raise exc
         if mode_value == "local":
             from fast_flights.local_playwright import local_playwright_fetch
 
             return local_playwright_fetch(params)
-        return _fallback_fetch(params, proxy)
+        return _fallback_fetch(params, proxy, cookie)
 
     response = resolve(mode)
     try:
@@ -322,6 +367,7 @@ def _get_flights_from_filter(
                 currency=currency,
                 mode="force-fallback",
                 proxy=proxy,
+                cookie=cookie,
             )
         raise exc
 ALLOWED_SEAT_CLASSES = ("economy", "premium-economy", "business", "first")
@@ -523,6 +569,7 @@ class SearchConfig:
     output: OutputSettings
     itinerary: ItinerarySettings
     http_proxy: Optional[str]
+    google_cookie: Optional[str]
     concurrency: int
     debug: bool
     plans: Sequence[PlanConfig]
@@ -542,6 +589,7 @@ class SearchConfig:
         if self.concurrency < 1:
             raise ValueError("Concurrency must be at least 1")
         self.debug = bool(self.debug)
+        self.google_cookie = _normalize_cookie_header(self.google_cookie)
         if not self.plans:
             raise ValueError("At least one plan must be provided")
 
@@ -765,6 +813,7 @@ def fetch_leg_html(
     currency_code: str,
     proxy: Optional[str],
     seat_class: str,
+    cookie: Optional[str],
 ) -> str:
     flight_data = build_flight_data(origin_code, destination_code, departure_date)
     filter_payload = TFSData.from_interface(
@@ -781,11 +830,11 @@ def fetch_leg_html(
         "curr": currency_code,
     }
     try:
-        response = _core_fetch(params, proxy)
+        response = _core_fetch(params, proxy, cookie)
         return response.text
     except AssertionError:
         try:
-            response = _fallback_fetch(params, proxy)
+            response = _fallback_fetch(params, proxy, cookie)
             return response.text
         except Exception:  # noqa: BLE001
             return ""
@@ -819,6 +868,7 @@ def fetch_leg_flights(
                 currency=config.currency_code,
                 mode="common",
                 proxy=config.http_proxy,
+                cookie=config.google_cookie,
             )
             html = fetch_leg_html(
                 origin_code=origin_code,
@@ -829,6 +879,7 @@ def fetch_leg_flights(
                 currency_code=config.currency_code,
                 proxy=config.http_proxy,
                 seat_class=config.request.seat_class,
+                cookie=config.google_cookie,
             )
             if html:
                 layover_lookup = parse_layover_details(html)
@@ -1407,6 +1458,7 @@ def _build_config_from_rows(rows_by_plan: Dict[str, List[SegmentRow]]) -> Search
         output=OutputSettings(),
         itinerary=ItinerarySettings(),
         http_proxy=None,
+        google_cookie=None,
         concurrency=1,
         debug=False,
         plans=plans,

@@ -16,6 +16,7 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 - CSV rows expose variant metadata for hidden journeys.
 - CSV rows now include seat_class and hidden-leg departure timestamps.
 - Rich logging prints overview tables and elapsed minutes.
+- Google Flights requests accept optional browser cookie headers for geo/persona reuse.
 
 ## Examples
 Example 1. Quick uvx run.
@@ -80,6 +81,7 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Plans list places, path, departures, filters, and options blocks.
 - Options include include_hidden toggles and hop caps per plan.
 - CLI overrides accept plan, currency, passengers, seat class, itinerary limits, proxy, concurrency, debug.
+- Google cookie headers can be injected via google_cookie, google_cookie_file, --google-cookie, or --google-cookie-file.
 
 ### YAML sample
 ```yaml
@@ -102,6 +104,8 @@ defaults:
   itinerary:
     leg_limit: 0       # Unlimited per leg; set 10 for a conservative cap.
     max_combinations: 0
+google_cookie_file: null   # Optional. Path to file containing Google Flights Cookie header.
+# google_cookie: "SID=...; HSID=..." # Optional inline Cookie header.
 plans:
   - name: sample-hop
     places:
@@ -166,4 +170,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 8259ee7eb6b88a0063dadbc7641542dcc60ae03e
+Last commit id: d21759890abb95f92e0b9d50f2f38a7cab5d7dd0
