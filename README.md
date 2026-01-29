@@ -178,4 +178,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 8259ee7eb6b88a0063dadbc7641542dcc60ae03e
+Last commit id: dc834eb4b54e7900e31e0c34f52ec363bc03daf0
