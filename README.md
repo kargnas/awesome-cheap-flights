@@ -17,6 +17,18 @@ Weekend-hopper toolkit for spotting cheap ICN short-hauls without opening browse
 - CSV rows now include seat_class and hidden-leg departure timestamps.
 - Rich logging prints overview tables and elapsed minutes.
 
+## Screenshots
+
+### CLI Output
+Rich console output with progress tracking and summary tables.
+
+![CLI Output](assets/console.png)
+
+### Excel Pivot Analysis
+Turn exported CSV data into pivot tables for quick price comparisons.
+
+![Excel Pivot Analysis](assets/image.png)
+
 ## Examples
 Example 1. Quick uvx run.
 ```bash
@@ -166,4 +178,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: 8259ee7eb6b88a0063dadbc7641542dcc60ae03e
+Last commit id: a77b356d42a3438e8bb93f3d20d65ae482ea0832
