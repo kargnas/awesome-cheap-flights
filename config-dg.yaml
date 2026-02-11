@@ -23,26 +23,26 @@ plans:
   - name: lax-asia-pe-only
     places:
       icn:
-        - ICN
-      schina:
-        - HKG  # Hong Kong
-        - SZX  # Hong Kong
-        - CAN  # Hong Kong\
+        - ICN  # Seoul Incheon
+      hkgszx:
+        - HKG
+        - SZX
+      szx:
+        - SZX
       ckg:
         - CKG  # Chongqing
-      icn:
-        - ICN  # Seoul Incheon
-    path: [icn, schina, ckg, icn]
+    # Departure key order defines leg order.
+    # Missing links between keys are treated as surface transfer.
     departures:
-      "icn->schina":
+      "icn->hkgszx":
         window:
           start: "2026-02-24"
           end: "2026-02-25"
-      "schina->ckg":
-        dates: ["2026-03-07"]
+      "szx->ckg":
+        dates: ["2026-03-07","2026-03-08"]
       "ckg->icn":
         window:
-          start: "2026-03-12"
+          start: "2026-03-11"
           end: "2026-03-13"
     options:
       include_hidden: true

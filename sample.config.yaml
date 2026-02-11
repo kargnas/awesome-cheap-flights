@@ -29,7 +29,7 @@ plans:
       city:
         - FUK # Fukuoka
         - HKG # Hong Kong
-    path: [home, city, home]
+    # Departure key order defines leg order.
     departures:
       "home->city":
         dates: ["2026-01-01", "2026-01-02"]   # Outbound departure choices.

@@ -11,6 +11,7 @@ from awesome_cheap_flights.pipeline import (
     LegDeparture,
     LegFlight,
     OutputSettings,
+    PlanLeg,
     PlanConfig,
     PlanOptions,
     PlanRunResult,
@@ -30,11 +31,18 @@ def _make_plan() -> PlanConfig:
     return PlanConfig(
         name="demo",
         places={"home": ["ICN"], "via": ["HKG"], "dest": ["SIN"]},
-        path=["home", "via", "dest"],
-        departures={
-            ("home", "via"): LegDeparture(dates=["2026-03-01"]),
-            ("via", "dest"): LegDeparture(dates=["2026-03-03"]),
-        },
+        legs=[
+            PlanLeg(
+                origin_place="home",
+                destination_place="via",
+                departure=LegDeparture(dates=["2026-03-01"]),
+            ),
+            PlanLeg(
+                origin_place="via",
+                destination_place="dest",
+                departure=LegDeparture(dates=["2026-03-03"]),
+            ),
+        ],
         options=PlanOptions(include_hidden=True, max_hidden_hops=1),
         filters={},
         output=PlanOutput(filename="demo.csv"),
@@ -51,7 +59,6 @@ def _make_config(plan: PlanConfig) -> SearchConfig:
         output=OutputSettings(directory="output", filename_pattern="{plan}_{timestamp}.csv"),
         itinerary=ItinerarySettings(),
         http_proxy=None,
-        google_cookie=None,
         concurrency=1,
         debug=False,
         plans=[plan],
@@ -130,7 +137,7 @@ def test_run_plan_generates_hidden_rows(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 def test_departure_max_stops_override(monkeypatch: pytest.MonkeyPatch) -> None:
     plan = _make_plan()
-    plan.departures[("home", "via")].max_stops = 0
+    plan.legs[0].departure.max_stops = 0
     config = _make_config(plan)
     captured: List[tuple[str, str, Optional[int]]] = []
 
@@ -161,6 +168,74 @@ def test_summary_headers_include_leg_destination_codes() -> None:
     headers = _build_summary_headers(plan, [])
     assert "home->via_destination_code" in headers
     assert "via->dest_destination_code" in headers
+
+
+def test_hidden_rows_skip_disconnected_surface_gap(monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = PlanConfig(
+        name="surface-gap",
+        places={"icn": ["ICN"], "hkg": ["HKG"], "szx": ["SZX"]},
+        legs=[
+            PlanLeg(
+                origin_place="icn",
+                destination_place="hkg",
+                departure=LegDeparture(dates=["2026-03-01"]),
+            ),
+            PlanLeg(
+                origin_place="szx",
+                destination_place="icn",
+                departure=LegDeparture(dates=["2026-03-07"]),
+            ),
+        ],
+        options=PlanOptions(include_hidden=True, max_hidden_hops=1),
+        filters={},
+        output=PlanOutput(filename="surface-gap.csv"),
+    )
+    config = _make_config(plan)
+    captured: List[tuple[str, str]] = []
+
+    def fake_fetch_leg_flights(**kwargs) -> List[LegFlight]:
+        captured.append((kwargs["origin_code"], kwargs["destination_code"]))
+        key = (kwargs["origin_code"], kwargs["destination_code"])
+        if key == ("ICN", "HKG"):
+            return [
+                LegFlight(
+                    airline_name="DemoAir",
+                    departure_at="2026-03-01 09:00:00",
+                    stops="Nonstop",
+                    stop_notes="",
+                    duration_hours=3.5,
+                    price=150,
+                    is_best=True,
+                    seat_class="economy",
+                    hidden_departure_at="",
+                )
+            ]
+        if key == ("SZX", "ICN"):
+            return [
+                LegFlight(
+                    airline_name="DemoAir",
+                    departure_at="2026-03-07 14:00:00",
+                    stops="Nonstop",
+                    stop_notes="",
+                    duration_hours=3.5,
+                    price=160,
+                    is_best=True,
+                    seat_class="economy",
+                    hidden_departure_at="",
+                )
+            ]
+        return []
+
+    monkeypatch.setattr("awesome_cheap_flights.pipeline.fetch_leg_flights", fake_fetch_leg_flights)
+
+    result = run_plan(config, plan)
+    scheduled = [row for row in result.rows if row.variant == "scheduled"]
+    hidden = [row for row in result.rows if row.variant == "hidden"]
+
+    assert len(scheduled) == 2
+    assert len(hidden) == 0
+    assert ("HKG", "SZX") not in captured
+    assert ("ICN", "ICN") not in captured
 
 
 def test_layover_notes_prefer_code_and_city_with_duration() -> None:
