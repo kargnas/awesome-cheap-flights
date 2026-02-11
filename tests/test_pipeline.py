@@ -18,11 +18,15 @@ from awesome_cheap_flights.pipeline import (
     PlanOutput,
     RequestSettings,
     SearchConfig,
+    SegmentRow,
+    _build_plan_itinerary_combinations,
     _build_summary_headers,
     _compose_stop_notes,
     _extract_layover_notes,
     _flight_contains_codes,
+    _segment_row_from_mapping,
     run_plan,
+    write_csv,
 )
 from selectolax.lexbor import LexborHTMLParser
 
@@ -280,3 +284,133 @@ def test_hidden_filter_ignores_arrival_code_in_stop_notes() -> None:
     )
     assert _flight_contains_codes(flight, ["HKG"])
     assert not _flight_contains_codes(flight, ["SZX"])
+
+
+def test_write_csv_outputs_na_for_missing_price(tmp_path: Path) -> None:
+    row = SegmentRow(
+        plan_name="demo",
+        journey_id="demo-0001",
+        journey_label="demo-0001 ICN->SIN 2026-03-01",
+        variant="scheduled",
+        leg_sequence=0,
+        origin_place="home",
+        origin_code="ICN",
+        destination_place="dest",
+        destination_code="SIN",
+        hidden_via_places="",
+        hidden_via_codes="",
+        departure_date="2026-03-01",
+        departure_at="2026-03-01 09:00:00",
+        departure_time="09:00",
+        duration_hours=6.5,
+        airline="DemoAir",
+        stops="Nonstop",
+        stop_notes="ARR SIN",
+        price=None,
+        is_best=True,
+        currency="USD",
+        seat_class="economy",
+        hidden_departure_at="",
+    )
+    csv_path = tmp_path / "rows.csv"
+    write_csv([row], csv_path)
+
+    text = csv_path.read_text(encoding="utf-8")
+    assert "N/A" in text
+
+
+def test_itinerary_combinations_show_na_for_missing_leg_price() -> None:
+    plan = _make_plan()
+    scheduled_rows = [
+        SegmentRow(
+            plan_name=plan.name,
+            journey_id="demo-0001",
+            journey_label="demo-0001 ICN->SIN 2026-03-01",
+            variant="scheduled",
+            leg_sequence=0,
+            origin_place="home",
+            origin_code="ICN",
+            destination_place="via",
+            destination_code="HKG",
+            hidden_via_places="",
+            hidden_via_codes="",
+            departure_date="2026-03-01",
+            departure_at="2026-03-01 09:00:00",
+            departure_time="09:00",
+            duration_hours=3.5,
+            airline="DemoAir",
+            stops="Nonstop",
+            stop_notes="ARR HKG",
+            price=150,
+            is_best=True,
+            currency="USD",
+            seat_class="economy",
+            hidden_departure_at="",
+        ),
+        SegmentRow(
+            plan_name=plan.name,
+            journey_id="demo-0001",
+            journey_label="demo-0001 ICN->SIN 2026-03-01",
+            variant="scheduled",
+            leg_sequence=1,
+            origin_place="via",
+            origin_code="HKG",
+            destination_place="dest",
+            destination_code="SIN",
+            hidden_via_places="",
+            hidden_via_codes="",
+            departure_date="2026-03-03",
+            departure_at="2026-03-03 08:00:00",
+            departure_time="08:00",
+            duration_hours=4.0,
+            airline="DemoAir",
+            stops="Nonstop",
+            stop_notes="ARR SIN",
+            price=None,
+            is_best=True,
+            currency="USD",
+            seat_class="economy",
+            hidden_departure_at="",
+        ),
+    ]
+
+    combos, _, _, _, _ = _build_plan_itinerary_combinations(
+        plan,
+        scheduled_rows,
+        ItinerarySettings(),
+    )
+    assert len(combos) == 1
+    record = combos[0]
+    assert record["via->dest_price"] == "N/A"
+    assert record["total_price"] == "N/A"
+
+
+def test_segment_row_parser_accepts_na_price() -> None:
+    parsed = _segment_row_from_mapping(
+        {
+            "plan_name": "demo",
+            "journey_id": "demo-0001",
+            "journey_label": "demo-0001 ICN->SIN 2026-03-01",
+            "variant": "scheduled",
+            "leg_sequence": "0",
+            "origin_place": "home",
+            "origin_code": "ICN",
+            "destination_place": "dest",
+            "destination_code": "SIN",
+            "hidden_via_places": "",
+            "hidden_via_codes": "",
+            "departure_date": "2026-03-01",
+            "departure_at": "2026-03-01 09:00:00",
+            "departure_time": "09:00",
+            "duration_hours": "6.5",
+            "airline": "DemoAir",
+            "stops": "Nonstop",
+            "stop_notes": "ARR SIN",
+            "price": "N/A",
+            "is_best": "true",
+            "currency": "USD",
+            "seat_class": "economy",
+            "hidden_departure_at": "",
+        }
+    )
+    assert parsed.price is None

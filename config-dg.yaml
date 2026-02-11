@@ -7,7 +7,7 @@ defaults:
     delay: 0.5
     retries: 2
     max_leg_results: 10
-    seat: economy  # Premium Economy ONLY
+    seat: premium-economy
   filters:
     max_stops: 2
     include_hidden: true

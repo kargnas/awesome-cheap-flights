@@ -650,6 +650,12 @@ def parse_price_to_int(price: str) -> Optional[int]:
     return int(digits) if digits else None
 
 
+def _format_price(value: Optional[int]) -> object:
+    if value is None:
+        return "N/A"
+    return value
+
+
 def parse_duration_to_hours(raw: str) -> Optional[float]:
     if not raw:
         return None
@@ -1220,7 +1226,10 @@ def _build_plan_itinerary_combinations(
             for row in combo:
                 leg_key = _build_leg_key(row)
                 for field in LEG_EXPORT_FIELDS:
-                    record[f"{leg_key}_{field}"] = getattr(row, field)
+                    value = getattr(row, field)
+                    if field == "price":
+                        value = _format_price(value)
+                    record[f"{leg_key}_{field}"] = value
                 if row.price is not None:
                     total_price += row.price
                 else:
@@ -1229,7 +1238,7 @@ def _build_plan_itinerary_combinations(
                     total_duration += row.duration_hours
                 if row.currency:
                     currency = row.currency
-            record["total_price"] = total_price if price_complete else None
+            record["total_price"] = total_price if price_complete else "N/A"
             record["total_currency"] = currency
             record["total_duration_hours"] = round(total_duration, 2) if total_duration else None
             combinations.append(record)
@@ -1241,8 +1250,10 @@ def _build_plan_itinerary_combinations(
 
     combinations.sort(
         key=lambda entry: (
-            entry.get("total_price") is None,
-            entry.get("total_price") if entry.get("total_price") is not None else float("inf"),
+            not isinstance(entry.get("total_price"), (int, float)),
+            entry.get("total_price")
+            if isinstance(entry.get("total_price"), (int, float))
+            else float("inf"),
             entry.get("journey_id"),
         )
     )
@@ -1317,6 +1328,8 @@ def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
 
     def parse_int(value: str) -> Optional[int]:
         value = value.strip()
+        if value.upper() == "N/A":
+            return None
         if not value:
             return None
         try:
@@ -2016,7 +2029,10 @@ def write_csv(
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
-                writer.writerow(asdict(row))
+                row_data = asdict(row)
+                if row_data.get("price") is None:
+                    row_data["price"] = "N/A"
+                writer.writerow(row_data)
         return
     header_fields = [field.name for field in fields(SegmentRow)]
     if not include_header_only:

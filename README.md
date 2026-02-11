@@ -65,7 +65,7 @@ Run the CLI locally for iterative tweaks.
 uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/dev.csv
 ```
 - Copy sample.config.yaml into config.yaml before editing routes.
-- Update config.yaml to adjust places, paths, or windows.
+- Update config.yaml to adjust places, legs, or windows.
 - Set UV_CACHE_DIR=$(pwd)/.cache/uv to isolate uv cache.
 - Use --output <path> to force a specific CSV file, directory, or pattern. Omit it to keep timestamped files inside output/.
 - Combine CLI overrides with commas or repeated flags for airports.
@@ -89,7 +89,9 @@ uv run python -m awesome_cheap_flights.cli --config config.yaml --output output/
 - Departures allow per-leg max_stops overrides alongside date selectors.
 - Date windows spanning more than seven days trigger an extreme warning because runs can take hours and risk Google anti-abuse blocks.
 - Output directory and filename_pattern customize CSV targets.
-- Plans list places, path, departures, filters, and options blocks.
+- Plans list places, ordered departures, filters, and options blocks.
+- Departure key order defines leg sequence for searches and workbooks.
+- Missing links between adjacent departure keys are treated as surface transfers.
 - Options include include_hidden toggles and hop caps per plan.
 - CLI overrides accept plan, currency, passengers, seat class, itinerary limits, proxy, concurrency, debug.
 
@@ -119,7 +121,6 @@ plans:
     places:
       home: [ICN]
       city: [FUK, HKG]
-    path: [home, city, home]
     departures:
       "home->city":
         dates: ["2026-01-01", "2026-01-02"]
@@ -143,7 +144,7 @@ Each plan expands airport combinations and departure calendars automatically.
 ## Output fields
 - plan_name marks the source plan for grouping.
 - journey_id stores a stable slug per journey.
-- journey_label summarizes path and chosen dates.
+- journey_label summarizes endpoint codes and chosen dates.
 - variant denotes scheduled legs or hidden discoveries.
 - leg_sequence tracks zero-based leg ordering.
 - origin_place and destination_place map to place identifiers.
@@ -155,7 +156,7 @@ Each plan expands airport combinations and departure calendars automatically.
 - stops and stop_notes capture arrival code plus stopover code, city, duration.
 - seat_class records the requested cabin per segment.
 - hidden_departure_at lists hidden-hop departure times when available.
-- price stores integer fare digits.
+- price stores fare digits or `N/A` when unavailable.
 - is_best mirrors Google Flights highlights.
 - currency shows the fare currency code.
 
@@ -163,7 +164,7 @@ Each plan expands airport combinations and departure calendars automatically.
 - Each run emits `<csv_stem>_itineraries.xlsx` alongside the CSV export.
 - Columns follow `<origin_place>-><destination_place>_<field>` naming (e.g., `home->las_price`).
 - Per-leg fields cover origin_code, destination_code, price, currency, seat_class, departure timestamps (including hidden departures), airline, stops, stop_notes, duration_hours, and variant flags.
-- Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours` when data is complete.
+- Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours`.
 - Tune `leg_limit` (flights per leg, 0 = unlimited, 10 recommended) and `max_combinations` (0 = unlimited) to balance coverage versus file size.
 
 ## Project layout
@@ -178,4 +179,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: ee53d5f393f63bca27a81f4b9cfd4ddbad7a183d
+Last commit id: 4c1f10512d3ea93aa615e249a18a54c598f8e339
