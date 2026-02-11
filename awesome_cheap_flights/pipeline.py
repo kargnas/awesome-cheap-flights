@@ -43,6 +43,11 @@ TIME_PATTERN = re.compile(
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
 TIME_LABEL_PATTERN = re.compile(r"(\d{1,2}:\d{2})\s*(AM|PM)?", re.IGNORECASE)
+LAYOVER_ARIA_PATTERN = re.compile(
+    r"Layover(?: \(\d+ of \d+\))? is a (?P<duration>.+?) layover at "
+    r"(?P<airport>.+?)(?: in (?P<city>[^.]+))?\.",
+    re.IGNORECASE,
+)
 
 DEFAULT_ITINERARY_LEG_LIMIT = 0
 DEFAULT_ITINERARY_MAX_COMBINATIONS = 0
@@ -563,6 +568,7 @@ class LegFlight:
 class LayoverDetails:
     stop_text: str
     layover_codes: str
+    layover_notes: str
     hidden_departure_at: str
 
 
@@ -669,6 +675,53 @@ def _build_hidden_departure_labels(values: Sequence[str]) -> str:
     return " · ".join(labels)
 
 
+def _extract_layover_notes(item, layover_codes: str) -> str:
+    aria_labels: List[str] = []
+    for node in item.css(".sSHqwe.tPgKwe.ogfYpf"):
+        aria_value = " ".join(node.attributes.get("aria-label", "").split())
+        if not aria_value or "layover" not in aria_value.lower():
+            continue
+        if aria_value not in aria_labels:
+            aria_labels.append(aria_value)
+    if not aria_labels:
+        return ""
+
+    code_tokens = [token for token in layover_codes.split() if token]
+    notes: List[str] = []
+    for label in aria_labels:
+        for idx, match in enumerate(LAYOVER_ARIA_PATTERN.finditer(label)):
+            duration = " ".join(match.group("duration").split())
+            city = " ".join((match.group("city") or "").split())
+            if not duration:
+                continue
+            prefix = code_tokens[idx] if idx < len(code_tokens) else ""
+            if prefix and city:
+                notes.append(f"{prefix} {city} ({duration})")
+            elif prefix:
+                notes.append(f"{prefix} ({duration})")
+            elif city:
+                notes.append(f"{city} ({duration})")
+            else:
+                airport = " ".join((match.group("airport") or "").split())
+                if airport:
+                    notes.append(f"{airport} ({duration})")
+    return "; ".join(notes)
+
+
+def _compose_stop_notes(
+    *,
+    destination_code: str,
+    layover_codes: str,
+    layover_notes: str,
+    stop_text: str,
+) -> str:
+    destination_note = f"ARR {destination_code}" if destination_code else ""
+    layover_note = layover_notes or layover_codes or extract_stop_codes(stop_text)
+    if destination_note and layover_note:
+        return f"{destination_note} | STOPOVER {layover_note}"
+    return destination_note or layover_note
+
+
 def split_datetime_components(timestamp: str) -> Tuple[str, str]:
     if not timestamp:
         return "", ""
@@ -741,6 +794,7 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], LayoverDetail
                 if val and val not in layover_values:
                     layover_values.append(val)
             layover_codes = extract_stop_codes(" ".join(layover_values))
+            layover_notes = _extract_layover_notes(item, layover_codes)
             hidden_departure_at = _build_hidden_departure_labels(layover_values)
             key = (name, " ".join(departure_time.split()), price_clean)
             details.setdefault(
@@ -748,6 +802,7 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], LayoverDetail
                 LayoverDetails(
                     stop_text=stop_text,
                     layover_codes=layover_codes,
+                    layover_notes=layover_notes,
                     hidden_departure_at=hidden_departure_at,
                 ),
             )
@@ -879,8 +934,14 @@ def fetch_leg_flights(
         layover = layover_lookup.get(key)
         stop_text = layover.stop_text if layover else ""
         layover_codes = layover.layover_codes if layover else ""
+        layover_notes = layover.layover_notes if layover else ""
         hidden_departure = layover.hidden_departure_at if layover else ""
-        notes = layover_codes or extract_stop_codes(stop_text)
+        notes = _compose_stop_notes(
+            destination_code=destination_code,
+            layover_codes=layover_codes,
+            layover_notes=layover_notes,
+            stop_text=stop_text,
+        )
         flights.append(
             LegFlight(
                 airline_name=flight.name,
@@ -1070,6 +1131,8 @@ def _build_leg_key(row: SegmentRow) -> str:
 
 
 LEG_EXPORT_FIELDS = (
+    "origin_code",
+    "destination_code",
     "price",
     "currency",
     "seat_class",
@@ -1532,7 +1595,10 @@ def _resolve_leg_max_stops(
 def _flight_contains_codes(flight: LegFlight, codes: Sequence[str]) -> bool:
     if not codes:
         return True
-    haystack = f"{flight.stop_notes} {flight.stops}"
+    note = flight.stop_notes or ""
+    if "STOPOVER" in note:
+        _, _, note = note.partition("STOPOVER")
+    haystack = f"{note} {flight.stops}"
     found = {token.upper() for token in extract_stop_codes(haystack).split() if token}
     return all(code.upper() in found for code in codes)
 

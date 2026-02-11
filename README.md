@@ -152,7 +152,7 @@ Each plan expands airport combinations and departure calendars automatically.
 - departure_date, departure_time, departure_at hold normalized timestamps.
 - duration_hours stores decimal leg durations.
 - airline holds the carrier label.
-- stops and stop_notes capture layover counts and codes.
+- stops and stop_notes capture arrival code plus stopover code, city, duration.
 - seat_class records the requested cabin per segment.
 - hidden_departure_at lists hidden-hop departure times when available.
 - price stores integer fare digits.
@@ -162,7 +162,7 @@ Each plan expands airport combinations and departure calendars automatically.
 ## Excel itinerary workbook
 - Each run emits `<csv_stem>_itineraries.xlsx` alongside the CSV export.
 - Columns follow `<origin_place>-><destination_place>_<field>` naming (e.g., `home->las_price`).
-- Per-leg fields cover price, currency, seat_class, departure timestamps (including hidden departures), airline, stops, stop_notes, duration_hours, and variant flags.
+- Per-leg fields cover origin_code, destination_code, price, currency, seat_class, departure timestamps (including hidden departures), airline, stops, stop_notes, duration_hours, and variant flags.
 - Totals include `total_price`, `total_currency`, and aggregated `total_duration_hours` when data is complete.
 - Tune `leg_limit` (flights per leg, 0 = unlimited, 10 recommended) and `max_combinations` (0 = unlimited) to balance coverage versus file size.
 
@@ -178,4 +178,4 @@ Each plan expands airport combinations and departure calendars automatically.
 - Provide a PYPI_TOKEN secret with publish permissions.
 - Select current to reuse the existing version during manual runs.
 
-Last commit id: a77b356d42a3438e8bb93f3d20d65ae482ea0832
+Last commit id: ee53d5f393f63bca27a81f4b9cfd4ddbad7a183d

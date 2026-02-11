@@ -17,8 +17,13 @@ from awesome_cheap_flights.pipeline import (
     PlanOutput,
     RequestSettings,
     SearchConfig,
+    _build_summary_headers,
+    _compose_stop_notes,
+    _extract_layover_notes,
+    _flight_contains_codes,
     run_plan,
 )
+from selectolax.lexbor import LexborHTMLParser
 
 
 def _make_plan() -> PlanConfig:
@@ -149,3 +154,54 @@ def test_departure_max_stops_override(monkeypatch: pytest.MonkeyPatch) -> None:
         if origin == "ICN" and destination == "HKG"
     )
     assert scheduled_call == 0
+
+
+def test_summary_headers_include_leg_destination_codes() -> None:
+    plan = _make_plan()
+    headers = _build_summary_headers(plan, [])
+    assert "home->via_destination_code" in headers
+    assert "via->dest_destination_code" in headers
+
+
+def test_layover_notes_prefer_code_and_city_with_duration() -> None:
+    html = """
+    <li>
+      <div class="sSHqwe tPgKwe ogfYpf"
+           aria-label="Layover (1 of 2) is a 7 hr 45 min overnight layover at Jinan Yaoqiang International Airport in Jinan. Layover (2 of 2) is a 45 min layover at Wuyishan Airport in Wuyishan."></div>
+    </li>
+    """
+    parser = LexborHTMLParser(html)
+    item = parser.css_first("li")
+    assert item is not None
+
+    layover_note = _extract_layover_notes(item, "TNA WUS")
+    assert layover_note == (
+        "TNA Jinan (7 hr 45 min overnight); "
+        "WUS Wuyishan (45 min)"
+    )
+
+    stop_notes = _compose_stop_notes(
+        destination_code="SZX",
+        layover_codes="TNA WUS",
+        layover_notes=layover_note,
+        stop_text="2 stops",
+    )
+    assert stop_notes.startswith("ARR SZX | STOPOVER ")
+    assert "TNA Jinan" in stop_notes
+    assert "7 hr 45 min overnight" in stop_notes
+
+
+def test_hidden_filter_ignores_arrival_code_in_stop_notes() -> None:
+    flight = LegFlight(
+        airline_name="HiddenJet",
+        departure_at="2026-03-01 07:30:00",
+        stops="1 stop",
+        stop_notes="ARR SZX | STOPOVER HKG Hong Kong (2 hr)",
+        duration_hours=6.5,
+        price=180,
+        is_best=False,
+        seat_class="economy",
+        hidden_departure_at="",
+    )
+    assert _flight_contains_codes(flight, ["HKG"])
+    assert not _flight_contains_codes(flight, ["SZX"])

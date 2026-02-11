@@ -40,6 +40,8 @@
 - Progress labels log a concise flight summary (best fare, airline, leg).
 - Rows deduplicate identical flights per journey leg to avoid repeated segments.
 - Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (default unlimited per leg; clamp via `leg_limit`).
+- Workbook leg exports now include `origin_code` and `destination_code` columns.
+- `stop_notes` now include arrival code plus layover code/city/duration when available.
 - CLI surfaces itinerary limits and recommended values when exporting workbooks.
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 - Legs spanning more than seven departure days emit an extreme warning because those runs can last hours and invite Google anti-abuse throttling.
@@ -98,4 +100,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: a77b356d42a3438e8bb93f3d20d65ae482ea0832
+Last commit id: ee53d5f393f63bca27a81f4b9cfd4ddbad7a183d

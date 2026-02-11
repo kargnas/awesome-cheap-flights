@@ -1,0 +1,53 @@
+schema_version: v2
+
+defaults:
+  currency: USD
+  passengers: 1
+  request:
+    delay: 0.5
+    retries: 2
+    max_leg_results: 10
+    seat: economy  # Premium Economy ONLY
+  filters:
+    max_stops: 2
+    include_hidden: true
+    max_hidden_hops: 1
+  output:
+    directory: output
+    filename_pattern: "{plan}_{timestamp}.csv"
+  itinerary:
+    leg_limit: 0
+    max_combinations: 0
+
+plans:
+  - name: lax-asia-pe-only
+    places:
+      icn:
+        - ICN
+      schina:
+        - HKG  # Hong Kong
+        - SZX  # Hong Kong
+        - CAN  # Hong Kong\
+      ckg:
+        - CKG  # Chongqing
+      icn:
+        - ICN  # Seoul Incheon
+    path: [icn, schina, ckg, icn]
+    departures:
+      "icn->schina":
+        window:
+          start: "2026-02-24"
+          end: "2026-02-25"
+      "schina->ckg":
+        dates: ["2026-03-07"]
+      "ckg->icn":
+        window:
+          start: "2026-03-12"
+          end: "2026-03-13"
+    options:
+      include_hidden: true
+      max_hidden_hops: 1
+
+google_cookie_file: null
+http_proxy: null
+concurrency: 5
