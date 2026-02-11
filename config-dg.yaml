@@ -1,0 +1,53 @@
+schema_version: v2
+
+defaults:
+  currency: USD
+  passengers: 1
+  request:
+    delay: 0.5
+    retries: 2
+    max_leg_results: 10
+    seat: premium-economy
+  filters:
+    max_stops: 2
+    include_hidden: true
+    max_hidden_hops: 1
+  output:
+    directory: output
+    filename_pattern: "{plan}_{timestamp}.csv"
+  itinerary:
+    leg_limit: 0
+    max_combinations: 0
+
+plans:
+  - name: lax-asia-pe-only
+    places:
+      icn:
+        - ICN  # Seoul Incheon
+      hkgszx:
+        - HKG
+        - SZX
+      szx:
+        - SZX
+      ckg:
+        - CKG  # Chongqing
+    # Departure key order defines leg order.
+    # Missing links between keys are treated as surface transfer.
+    departures:
+      "icn->hkgszx":
+        window:
+          start: "2026-02-24"
+          end: "2026-02-25"
+      "szx->ckg":
+        dates: ["2026-03-07","2026-03-08"]
+      "ckg->icn":
+        window:
+          start: "2026-03-11"
+          end: "2026-03-13"
+    options:
+      include_hidden: true
+      max_hidden_hops: 1
+
+google_cookie_file: null
+http_proxy: null
+concurrency: 5

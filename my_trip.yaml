@@ -1,0 +1,31 @@
+schema_version: v2
+
+defaults:
+  currency: USD
+
+plans:
+  - name: lax-asia-icn-biz
+    places:
+      home: [LAX]
+      stop: [PEK, PVG, HKG, HND, NRT]
+      dest: [ICN]
+    departures:
+      "home->stop":
+        dates: ["2026-01-18"]
+      "stop->dest":
+        window: { start: "2026-01-21", end: "2026-01-25" }
+    request:
+      seat: business
+
+  - name: lax-asia-icn-pre
+    places:
+      home: [LAX]
+      stop: [PEK, PVG, HKG, HND, NRT]
+      dest: [ICN]
+    departures:
+      "home->stop":
+        dates: ["2026-01-18"]
+      "stop->dest":
+        window: { start: "2026-01-21", end: "2026-01-25" }
+    request:
+      seat: premium-economy

@@ -15,6 +15,7 @@ from .pipeline import (
     ItinerarySettings,
     LegDeparture,
     LegFilter,
+    PlanLeg,
     PlanConfig,
     PlanOptions,
     PlanOutput,
@@ -166,24 +167,10 @@ def parse_places(raw: Any) -> Dict[str, List[str]]:
     return places
 
 
-def parse_path(raw: Any) -> List[str]:
-    if not isinstance(raw, (list, tuple)):
-        raise ValueError("Plan requires 'path' list")
-    path: List[str] = []
-    for entry in raw:
-        token = strip_comment(entry)
-        if not token:
-            raise ValueError("Path entries must be non-empty strings")
-        path.append(token)
-    if len(path) < 2:
-        raise ValueError("Path must contain at least two points")
-    return path
-
-
-def parse_departures(raw: Any) -> Dict[tuple[str, str], LegDeparture]:
+def parse_departures(raw: Any) -> List[PlanLeg]:
     if not isinstance(raw, dict):
         raise ValueError("Plan requires 'departures' mapping")
-    departures: Dict[tuple[str, str], LegDeparture] = {}
+    departures: List[PlanLeg] = []
     for key, value in raw.items():
         origin, destination = _parse_leg_key(key)
         selector = value
@@ -198,7 +185,15 @@ def parse_departures(raw: Any) -> Dict[tuple[str, str], LegDeparture]:
         dates = _expand_date_selector(selector)
         if not dates:
             raise ValueError(f"Leg {origin}->{destination} produced no dates")
-        departures[(origin, destination)] = LegDeparture(dates=dates, max_stops=max_stops)
+        departures.append(
+            PlanLeg(
+                origin_place=origin,
+                destination_place=destination,
+                departure=LegDeparture(dates=dates, max_stops=max_stops),
+            )
+        )
+    if not departures:
+        raise ValueError("Plan requires at least one departures entry")
     return departures
 
 
@@ -256,19 +251,22 @@ def parse_plan(raw: Any, defaults: FilterSettings) -> PlanConfig:
     if not name:
         raise ValueError("Plan missing 'name'")
     places = parse_places(raw.get("places"))
-    path = parse_path(raw.get("path"))
-    departures = parse_departures(raw.get("departures"))
+    if "path" in raw:
+        raise ValueError(
+            f"Plan '{name}' uses deprecated 'path'. Remove it and order legs via 'departures'."
+        )
+    legs = parse_departures(raw.get("departures"))
     options = parse_plan_options(raw.get("options"), defaults)
     filters = parse_plan_filters(raw.get("filters"))
     output = parse_plan_output(raw.get("output")) if raw.get("output") is not None else None
-    for place in path:
-        if place not in places:
-            raise ValueError(f"Plan '{name}' path references undefined place '{place}'")
+    for leg in legs:
+        for place in (leg.origin_place, leg.destination_place):
+            if place not in places:
+                raise ValueError(f"Plan '{name}' departures references undefined place '{place}'")
     return PlanConfig(
         name=name,
         places=places,
-        path=path,
-        departures=departures,
+        legs=legs,
         options=options,
         filters=filters,
         output=output,

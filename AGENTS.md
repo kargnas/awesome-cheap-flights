@@ -26,7 +26,7 @@
 
 - `awesome_cheap_flights/cli.py`: CLI arguments + config loader for console script and uvx runs; direct module execution now exits via `SystemExit(main())`.
 - `awesome_cheap_flights/__main__.py`: Enables `python -m awesome_cheap_flights` compatibility.
-- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities; hidden legs now only bridge a single intermediate stop.
+- `awesome_cheap_flights/pipeline.py`: Core scraping/search pipeline including data structures, HTML parsing, and CSV export utilities; plan legs are ordered by `departures` keys and hidden legs only bridge connected adjacent legs.
 - `sample.config.yaml`: Minimal example config used for smoke tests; copy to `config.yaml` for local overrides.
 - `output/`: Git-ignored directory for generated CSV files (only tracked when explicitly whitelisted).
 
@@ -40,6 +40,9 @@
 - Progress labels log a concise flight summary (best fare, airline, leg).
 - Rows deduplicate identical flights per journey leg to avoid repeated segments.
 - Each plan saves an `<csv_stem>_itineraries.xlsx` workbook (default unlimited per leg; clamp via `leg_limit`).
+- Workbook leg exports now include `origin_code` and `destination_code` columns.
+- `stop_notes` now include arrival code plus layover code/city/duration when available.
+- Missing prices render as `N/A` in CSV and workbook exports.
 - CLI surfaces itinerary limits and recommended values when exporting workbooks.
 - The progress bar announces `Ctrl+C`; interrupting saves `draft-<original>.csv` and reports remaining itineraries.
 - Legs spanning more than seven departure days emit an extreme warning because those runs can last hours and invite Google anti-abuse throttling.
@@ -79,6 +82,8 @@
 ## Configuration Tips
 
 - Store local secrets or large route lists in `config.yaml` (git-ignored). Use `sample.config.yaml` only for reproducible smoke tests.
+- Plan `path` is removed; `departures` key order defines leg sequence.
+- Missing links between adjacent departure legs are treated as surface transfers.
 - Prefer `outbound` / `inbound` keys for itineraries; ranges are specified via `{start, end}` blocks.
 - Set the top-level `currency` key (uppercase ISO code) when you need fares labeled in something other than USD.
 - Use the `passengers` key to control the number of adult seats (defaults to 1).
@@ -98,4 +103,4 @@
 - `.github/workflows/release.yml` auto-runs on pushes to `main` with a patch bump when changes touch `awesome_cheap_flights/*.py`, root `*.toml`, or `uv.lock`, and HEAD differs from the last release tag; append `[minor]` to the end of the first commit subject to force a minor bump. The workflow builds with `uv tool run --from build pyproject-build --wheel --sdist`, uploads via `uvx --from twine twine upload`, then tags/pushes/drafts the GitHub Release. Manually dispatch when you need `minor` or `current`.
 - Provide `PYPI_TOKEN` in repo secrets with upload scope.
 
-Last commit id: a77b356d42a3438e8bb93f3d20d65ae482ea0832
+Last commit id: 4c1f10512d3ea93aa615e249a18a54c598f8e339

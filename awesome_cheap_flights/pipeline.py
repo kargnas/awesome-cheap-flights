@@ -43,6 +43,11 @@ TIME_PATTERN = re.compile(
 
 DURATION_PATTERN = re.compile(r'(?:(?P<hours>\d+)\s*h(?:ours?)?)?(?:\s*(?P<minutes>\d+)\s*m(?:in)?)?', re.IGNORECASE)
 TIME_LABEL_PATTERN = re.compile(r"(\d{1,2}:\d{2})\s*(AM|PM)?", re.IGNORECASE)
+LAYOVER_ARIA_PATTERN = re.compile(
+    r"Layover(?: \(\d+ of \d+\))? is a (?P<duration>.+?) layover at "
+    r"(?P<airport>.+?)(?: in (?P<city>[^.]+))?\.",
+    re.IGNORECASE,
+)
 
 DEFAULT_ITINERARY_LEG_LIMIT = 0
 DEFAULT_ITINERARY_MAX_COMBINATIONS = 0
@@ -163,7 +168,10 @@ class ProgressReporter:
         table.add_column("Field", justify="left")
         table.add_column("Value", justify="right")
         table.add_row("Plan", self._plan.name)
-        table.add_row("Path", " → ".join(self._plan.path))
+        leg_label = " | ".join(
+            f"{leg.origin_place}->{leg.destination_place}" for leg in self._plan.legs
+        )
+        table.add_row("Legs", leg_label or "-")
         table.add_row("Journeys", str(self.total_steps))
         table.add_row("Passengers", str(self._config.passenger_count))
         table.add_row("Currency", self._config.currency_code)
@@ -497,11 +505,25 @@ class LegDeparture:
 
 
 @dataclass
+class PlanLeg:
+    origin_place: str
+    destination_place: str
+    departure: LegDeparture
+
+    def __post_init__(self) -> None:
+        self.origin_place = str(self.origin_place or "").strip()
+        self.destination_place = str(self.destination_place or "").strip()
+        if not self.origin_place or not self.destination_place:
+            raise ValueError("Plan leg requires non-empty origin_place and destination_place")
+        if not isinstance(self.departure, LegDeparture):
+            raise ValueError("Plan leg requires a LegDeparture value")
+
+
+@dataclass
 class PlanConfig:
     name: str
     places: Dict[str, List[str]]
-    path: List[str]
-    departures: Dict[Tuple[str, str], LegDeparture]
+    legs: List[PlanLeg]
     options: PlanOptions
     filters: Dict[Tuple[str, str], LegFilter]
     output: Optional[PlanOutput] = None
@@ -510,7 +532,7 @@ class PlanConfig:
 @dataclass
 class PlanExecution:
     assignment: Dict[str, str]
-    departures: Dict[Tuple[str, str], str]
+    departure_dates: List[str]
 
 
 @dataclass
@@ -563,6 +585,7 @@ class LegFlight:
 class LayoverDetails:
     stop_text: str
     layover_codes: str
+    layover_notes: str
     hidden_departure_at: str
 
 
@@ -627,6 +650,12 @@ def parse_price_to_int(price: str) -> Optional[int]:
     return int(digits) if digits else None
 
 
+def _format_price(value: Optional[int]) -> object:
+    if value is None:
+        return "N/A"
+    return value
+
+
 def parse_duration_to_hours(raw: str) -> Optional[float]:
     if not raw:
         return None
@@ -667,6 +696,53 @@ def _build_hidden_departure_labels(values: Sequence[str]) -> str:
             if label and label not in labels:
                 labels.append(label)
     return " · ".join(labels)
+
+
+def _extract_layover_notes(item, layover_codes: str) -> str:
+    aria_labels: List[str] = []
+    for node in item.css(".sSHqwe.tPgKwe.ogfYpf"):
+        aria_value = " ".join(node.attributes.get("aria-label", "").split())
+        if not aria_value or "layover" not in aria_value.lower():
+            continue
+        if aria_value not in aria_labels:
+            aria_labels.append(aria_value)
+    if not aria_labels:
+        return ""
+
+    code_tokens = [token for token in layover_codes.split() if token]
+    notes: List[str] = []
+    for label in aria_labels:
+        for idx, match in enumerate(LAYOVER_ARIA_PATTERN.finditer(label)):
+            duration = " ".join(match.group("duration").split())
+            city = " ".join((match.group("city") or "").split())
+            if not duration:
+                continue
+            prefix = code_tokens[idx] if idx < len(code_tokens) else ""
+            if prefix and city:
+                notes.append(f"{prefix} {city} ({duration})")
+            elif prefix:
+                notes.append(f"{prefix} ({duration})")
+            elif city:
+                notes.append(f"{city} ({duration})")
+            else:
+                airport = " ".join((match.group("airport") or "").split())
+                if airport:
+                    notes.append(f"{airport} ({duration})")
+    return "; ".join(notes)
+
+
+def _compose_stop_notes(
+    *,
+    destination_code: str,
+    layover_codes: str,
+    layover_notes: str,
+    stop_text: str,
+) -> str:
+    destination_note = f"ARR {destination_code}" if destination_code else ""
+    layover_note = layover_notes or layover_codes or extract_stop_codes(stop_text)
+    if destination_note and layover_note:
+        return f"{destination_note} | STOPOVER {layover_note}"
+    return destination_note or layover_note
 
 
 def split_datetime_components(timestamp: str) -> Tuple[str, str]:
@@ -741,6 +817,7 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], LayoverDetail
                 if val and val not in layover_values:
                     layover_values.append(val)
             layover_codes = extract_stop_codes(" ".join(layover_values))
+            layover_notes = _extract_layover_notes(item, layover_codes)
             hidden_departure_at = _build_hidden_departure_labels(layover_values)
             key = (name, " ".join(departure_time.split()), price_clean)
             details.setdefault(
@@ -748,6 +825,7 @@ def parse_layover_details(html: str) -> Dict[Tuple[str, str, str], LayoverDetail
                 LayoverDetails(
                     stop_text=stop_text,
                     layover_codes=layover_codes,
+                    layover_notes=layover_notes,
                     hidden_departure_at=hidden_departure_at,
                 ),
             )
@@ -879,8 +957,14 @@ def fetch_leg_flights(
         layover = layover_lookup.get(key)
         stop_text = layover.stop_text if layover else ""
         layover_codes = layover.layover_codes if layover else ""
+        layover_notes = layover.layover_notes if layover else ""
         hidden_departure = layover.hidden_departure_at if layover else ""
-        notes = layover_codes or extract_stop_codes(stop_text)
+        notes = _compose_stop_notes(
+            destination_code=destination_code,
+            layover_codes=layover_codes,
+            layover_notes=layover_notes,
+            stop_text=stop_text,
+        )
         flights.append(
             LegFlight(
                 airline_name=flight.name,
@@ -898,14 +982,26 @@ def fetch_leg_flights(
     return flights
 
 
-def _iter_edges(path: Sequence[str]) -> List[Tuple[str, str]]:
-    return [(path[idx], path[idx + 1]) for idx in range(len(path) - 1)]
+def _plan_place_keys(plan: PlanConfig) -> List[str]:
+    ordered: List[str] = []
+    seen: set[str] = set()
+    for leg in plan.legs:
+        for place in (leg.origin_place, leg.destination_place):
+            if place in seen:
+                continue
+            seen.add(place)
+            ordered.append(place)
+    return ordered
 
 
-def _iter_hidden_pairs(path: Sequence[str]) -> Iterable[Tuple[int, int]]:
-    for start in range(len(path) - 2):
-        end = start + 2
-        if path[start] == path[end]:
+def _iter_hidden_pairs(legs: Sequence[PlanLeg]) -> Iterable[Tuple[int, int]]:
+    for start in range(len(legs) - 1):
+        end = start + 1
+        first_leg = legs[start]
+        second_leg = legs[end]
+        if first_leg.destination_place != second_leg.origin_place:
+            continue
+        if first_leg.origin_place == second_leg.destination_place:
             continue
         yield start, end
 
@@ -943,11 +1039,9 @@ def _build_journey_label(
     *,
     journey_index: int,
 ) -> str:
-    edges = _iter_edges(plan.path)
-    first_edge = edges[0] if edges else None
-    first_date = execution.departures.get(first_edge, "?") if first_edge else "?"
-    origin_place = plan.path[0] if plan.path else "?"
-    destination_place = plan.path[-1] if plan.path else "?"
+    first_date = execution.departure_dates[0] if execution.departure_dates else "?"
+    origin_place = plan.legs[0].origin_place if plan.legs else "?"
+    destination_place = plan.legs[-1].destination_place if plan.legs else "?"
     origin_code = execution.assignment.get(origin_place, "?")
     destination_code = execution.assignment.get(destination_place, "?")
     return (
@@ -1070,6 +1164,8 @@ def _build_leg_key(row: SegmentRow) -> str:
 
 
 LEG_EXPORT_FIELDS = (
+    "origin_code",
+    "destination_code",
     "price",
     "currency",
     "seat_class",
@@ -1096,7 +1192,7 @@ def _build_plan_itinerary_combinations(
         journeys[row.journey_id].append(row)
 
     combinations: List[Dict[str, object]] = []
-    expected_leg_count = max(len(plan.path) - 1, 0)
+    expected_leg_count = len(plan.legs)
     truncated = False
     clamped = False
 
@@ -1130,7 +1226,10 @@ def _build_plan_itinerary_combinations(
             for row in combo:
                 leg_key = _build_leg_key(row)
                 for field in LEG_EXPORT_FIELDS:
-                    record[f"{leg_key}_{field}"] = getattr(row, field)
+                    value = getattr(row, field)
+                    if field == "price":
+                        value = _format_price(value)
+                    record[f"{leg_key}_{field}"] = value
                 if row.price is not None:
                     total_price += row.price
                 else:
@@ -1139,7 +1238,7 @@ def _build_plan_itinerary_combinations(
                     total_duration += row.duration_hours
                 if row.currency:
                     currency = row.currency
-            record["total_price"] = total_price if price_complete else None
+            record["total_price"] = total_price if price_complete else "N/A"
             record["total_currency"] = currency
             record["total_duration_hours"] = round(total_duration, 2) if total_duration else None
             combinations.append(record)
@@ -1151,8 +1250,10 @@ def _build_plan_itinerary_combinations(
 
     combinations.sort(
         key=lambda entry: (
-            entry.get("total_price") is None,
-            entry.get("total_price") if entry.get("total_price") is not None else float("inf"),
+            not isinstance(entry.get("total_price"), (int, float)),
+            entry.get("total_price")
+            if isinstance(entry.get("total_price"), (int, float))
+            else float("inf"),
             entry.get("journey_id"),
         )
     )
@@ -1165,7 +1266,7 @@ def _build_summary_headers(
 ) -> List[str]:
     base_headers = ["plan_name", "journey_id", "journey_label"]
     leg_headers: List[str] = []
-    leg_keys = [f"{plan.path[idx]}->{plan.path[idx + 1]}" for idx in range(max(len(plan.path) - 1, 0))]
+    leg_keys = [f"{leg.origin_place}->{leg.destination_place}" for leg in plan.legs]
     for leg_key in leg_keys:
         for field in LEG_EXPORT_FIELDS:
             leg_headers.append(f"{leg_key}_{field}")
@@ -1227,6 +1328,8 @@ def _segment_row_from_mapping(row: Dict[str, str]) -> SegmentRow:
 
     def parse_int(value: str) -> Optional[int]:
         value = value.strip()
+        if value.upper() == "N/A":
+            return None
         if not value:
             return None
         try:
@@ -1338,21 +1441,6 @@ def _infer_plan_config_from_segments(plan_name: str, rows: Sequence[SegmentRow])
     if not ordered_sequences:
         raise ValueError("Unable to infer leg order from CSV")
 
-    raw_path: List[str] = []
-    for seq in ordered_sequences:
-        sample = scheduled_map[seq][0]
-        if not raw_path:
-            raw_path.append(sample.origin_place)
-        if raw_path[-1] != sample.origin_place:
-            raw_path.append(sample.origin_place)
-        raw_path.append(sample.destination_place)
-    dedup_path: List[str] = []
-    for place in raw_path:
-        if not dedup_path or dedup_path[-1] != place:
-            dedup_path.append(place)
-    if len(dedup_path) < 2:
-        raise ValueError("Inferred path must contain at least two points")
-
     place_codes: Dict[str, List[str]] = {}
     codes_map: Dict[str, set[str]] = defaultdict(set)
     for row in rows:
@@ -1363,23 +1451,29 @@ def _infer_plan_config_from_segments(plan_name: str, rows: Sequence[SegmentRow])
         if not place_codes[place]:
             place_codes[place] = [""]
 
-    departures: Dict[Tuple[str, str], LegDeparture] = {}
+    legs: List[PlanLeg] = []
     for seq in ordered_sequences:
         samples = scheduled_map[seq]
         sample = samples[0]
-        key = (sample.origin_place, sample.destination_place)
         dates = sorted({row.departure_date for row in samples if row.departure_date})
         if not dates:
             dates = ["1970-01-01"]
-        departures[key] = LegDeparture(dates=dates)
+        legs.append(
+            PlanLeg(
+                origin_place=sample.origin_place,
+                destination_place=sample.destination_place,
+                departure=LegDeparture(dates=dates),
+            )
+        )
+    if not legs:
+        raise ValueError("Unable to infer departures from CSV")
 
     options = PlanOptions(include_hidden=any(row.variant == "hidden" for row in rows), max_hidden_hops=1)
     plan_filters: Dict[Tuple[str, str], LegFilter] = {}
     return PlanConfig(
         name=plan_name,
         places=place_codes,
-        path=dedup_path,
-        departures=departures,
+        legs=legs,
         options=options,
         filters=plan_filters,
         output=None,
@@ -1494,11 +1588,11 @@ def _build_progress_label(
     total: int,
     config: SearchConfig,
 ) -> str:
-    origin_code = execution.assignment.get(plan.path[0], "?") if plan.path else "?"
-    destination_code = execution.assignment.get(plan.path[-1], "?") if plan.path else "?"
-    edges = _iter_edges(plan.path)
-    first_edge = edges[0] if edges else None
-    first_date = execution.departures.get(first_edge, "?") if first_edge else "?"
+    origin_place = plan.legs[0].origin_place if plan.legs else "?"
+    destination_place = plan.legs[-1].destination_place if plan.legs else "?"
+    origin_code = execution.assignment.get(origin_place, "?")
+    destination_code = execution.assignment.get(destination_place, "?")
+    first_date = execution.departure_dates[0] if execution.departure_dates else "?"
     return (
         f"{plan.name} #{journey_index}/{total} "
         f"{origin_code}->{destination_code} {first_date} · "
@@ -1509,8 +1603,7 @@ def _build_progress_label(
 def _resolve_leg_max_stops(
     config: SearchConfig,
     plan: PlanConfig,
-    origin_place: str,
-    destination_place: str,
+    leg: PlanLeg,
     *,
     hidden: bool,
 ) -> Optional[int]:
@@ -1520,10 +1613,9 @@ def _resolve_leg_max_stops(
         if global_limit is not None:
             limit = min(limit, global_limit)
         return limit
-    leg_departure = plan.departures.get((origin_place, destination_place))
-    if leg_departure and leg_departure.max_stops is not None:
-        return leg_departure.max_stops
-    override = plan.filters.get((origin_place, destination_place))
+    if leg.departure.max_stops is not None:
+        return leg.departure.max_stops
+    override = plan.filters.get((leg.origin_place, leg.destination_place))
     if override and override.max_stops is not None:
         return override.max_stops
     return config.filters.max_stops
@@ -1532,7 +1624,10 @@ def _resolve_leg_max_stops(
 def _flight_contains_codes(flight: LegFlight, codes: Sequence[str]) -> bool:
     if not codes:
         return True
-    haystack = f"{flight.stop_notes} {flight.stops}"
+    note = flight.stop_notes or ""
+    if "STOPOVER" in note:
+        _, _, note = note.partition("STOPOVER")
+    haystack = f"{note} {flight.stops}"
     found = {token.upper() for token in extract_stop_codes(haystack).split() if token}
     return all(code.upper() in found for code in codes)
 
@@ -1599,16 +1694,21 @@ def collect_segments_for_execution(
     reporter: Optional[ProgressReporter],
 ) -> List[SegmentRow]:
     rows: List[SegmentRow] = []
-    edges = _iter_edges(plan.path)
     journey_id = f"{_slugify_plan_name(plan.name)}-{journey_index:04d}"
 
-    for seq_index, (origin_place, destination_place) in enumerate(edges):
+    for seq_index, leg in enumerate(plan.legs):
+        origin_place = leg.origin_place
+        destination_place = leg.destination_place
         origin_code = execution.assignment.get(origin_place)
         destination_code = execution.assignment.get(destination_place)
         if not origin_code or not destination_code:
             _warn(f"Missing airport code for {origin_place}->{destination_place}", reporter)
             continue
-        departure_date = execution.departures.get((origin_place, destination_place))
+        departure_date = (
+            execution.departure_dates[seq_index]
+            if seq_index < len(execution.departure_dates)
+            else ""
+        )
         if not departure_date:
             _warn(
                 f"Missing departure date for {origin_place}->{destination_place}",
@@ -1618,8 +1718,7 @@ def collect_segments_for_execution(
         max_stops = _resolve_leg_max_stops(
             config,
             plan,
-            origin_place,
-            destination_place,
+            leg,
             hidden=False,
         )
         flights = fetch_leg_flights(
@@ -1652,13 +1751,13 @@ def collect_segments_for_execution(
             time.sleep(config.request.delay)
 
     if plan.options.include_hidden:
-        hidden_offset = len(edges)
-        for hidden_index, (start_idx, end_idx) in enumerate(_iter_hidden_pairs(plan.path)):
-            origin_place = plan.path[start_idx]
-            destination_place = plan.path[end_idx]
-            via_places = plan.path[start_idx + 1 : end_idx]
-            if not via_places:
-                continue
+        hidden_offset = len(plan.legs)
+        for hidden_index, (start_idx, end_idx) in enumerate(_iter_hidden_pairs(plan.legs)):
+            first_leg = plan.legs[start_idx]
+            second_leg = plan.legs[end_idx]
+            origin_place = first_leg.origin_place
+            destination_place = second_leg.destination_place
+            via_places = [first_leg.destination_place]
             origin_code = execution.assignment.get(origin_place)
             destination_code = execution.assignment.get(destination_place)
             via_codes = [execution.assignment.get(place, "") for place in via_places]
@@ -1668,8 +1767,11 @@ def collect_segments_for_execution(
                     reporter,
                 )
                 continue
-            first_edge = (plan.path[start_idx], plan.path[start_idx + 1])
-            departure_date = execution.departures.get(first_edge)
+            departure_date = (
+                execution.departure_dates[start_idx]
+                if start_idx < len(execution.departure_dates)
+                else ""
+            )
             if not departure_date:
                 _warn(
                     f"Missing departure date for hidden path {origin_place}->{destination_place}",
@@ -1679,8 +1781,7 @@ def collect_segments_for_execution(
             hidden_limit = _resolve_leg_max_stops(
                 config,
                 plan,
-                origin_place,
-                destination_place,
+                first_leg,
                 hidden=True,
             )
             if hidden_limit <= 0:
@@ -1723,29 +1824,32 @@ def collect_segments_for_execution(
 
 
 def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
-    if len(plan.path) < 2:
-        raise ValueError(f"Plan '{plan.name}' requires at least two path entries")
-    for place in plan.path:
-        if place not in plan.places:
-            raise ValueError(f"Plan '{plan.name}' is missing place '{place}' definition")
+    if not plan.legs:
+        raise ValueError(f"Plan '{plan.name}' requires at least one departure leg")
+    for leg in plan.legs:
+        if leg.origin_place not in plan.places:
+            raise ValueError(f"Plan '{plan.name}' is missing place '{leg.origin_place}' definition")
+        if leg.destination_place not in plan.places:
+            raise ValueError(f"Plan '{plan.name}' is missing place '{leg.destination_place}' definition")
     for key, codes in plan.places.items():
         if not codes:
             raise ValueError(f"Plan '{plan.name}' place '{key}' has no airport codes")
 
     output_path = _resolve_plan_output_path(config, plan)
-    edges = _iter_edges(plan.path)
-    departure_entries = [plan.departures.get(edge) for edge in edges]
-    for edge, entry in zip(edges, departure_entries):
-        if entry is None or not entry.dates:
+    departure_entries = [leg.departure for leg in plan.legs]
+    for leg, entry in zip(plan.legs, departure_entries):
+        if not entry.dates:
             raise ValueError(
-                f"Plan '{plan.name}' missing departure dates for {edge[0]}->{edge[1]}"
+                f"Plan '{plan.name}' missing departure dates for {leg.origin_place}->{leg.destination_place}"
             )
 
-    place_keys = list(plan.places.keys())
+    place_keys = _plan_place_keys(plan)
     code_options = [plan.places[key] for key in place_keys]
     long_span_alerts: List[str] = []
-    for origin, destination in edges:
-        entry = plan.departures[(origin, destination)]
+    for leg in plan.legs:
+        origin = leg.origin_place
+        destination = leg.destination_place
+        entry = leg.departure
         unique_dates = sorted({date_token for date_token in entry.dates})
         parsed_dates = [
             datetime.strptime(date_token, "%Y-%m-%d") for date_token in unique_dates
@@ -1771,8 +1875,12 @@ def run_plan(config: SearchConfig, plan: PlanConfig) -> PlanRunResult:
     for codes in product(*code_options):
         assignment = dict(zip(place_keys, codes))
         for date_combo in product(*(entry.dates for entry in departure_entries)):
-            departures = {edge: date for edge, date in zip(edges, date_combo)}
-            executions.append(PlanExecution(assignment=assignment, departures=departures))
+            executions.append(
+                PlanExecution(
+                    assignment=assignment,
+                    departure_dates=list(date_combo),
+                )
+            )
 
     total_steps = len(executions)
     rows: List[SegmentRow] = []
@@ -1921,7 +2029,10 @@ def write_csv(
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for row in rows:
-                writer.writerow(asdict(row))
+                row_data = asdict(row)
+                if row_data.get("price") is None:
+                    row_data["price"] = "N/A"
+                writer.writerow(row_data)
         return
     header_fields = [field.name for field in fields(SegmentRow)]
     if not include_header_only:
